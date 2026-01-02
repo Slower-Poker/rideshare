@@ -37,8 +37,12 @@ function App() {
         email: currentUser.signInDetails?.loginId || '',
         username: currentUser.username,
       });
-    } catch {
-      // User not authenticated
+    } catch (error) {
+      // User not authenticated or error occurred
+      // Only log in development to avoid console noise in production
+      if (import.meta.env.DEV) {
+        console.debug('User not authenticated or auth check failed:', error);
+      }
       setUser(null);
     } finally {
       setLoading(false);

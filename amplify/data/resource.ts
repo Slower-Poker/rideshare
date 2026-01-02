@@ -20,15 +20,17 @@ const schema = a.schema({
       totalRidesAsHost: a.integer().default(0),
       totalRidesAsRider: a.integer().default(0),
       termsAccepted: a.boolean().default(false),
-      termsAcceptedDate: a.string(),
+      termsAcceptedDate: a.datetime(),
       termsVersion: a.string(),
       // Relationships
       hostedRides: a.hasMany('RideOffer', 'hostId'),
       joinedRides: a.hasMany('RideParticipant', 'riderId'),
     })
     .authorization((allow) => [
-      allow.guest().to(['read']), // Public profile info
+      // Authenticated users can read all profiles and create their own
       allow.authenticated().to(['read', 'create', 'update', 'delete']),
+      // Note: Application logic should enforce that users can only update/delete their own profile
+      // by checking userId matches authenticated user's ID
     ]),
 
   // Ride Offer Model
@@ -52,8 +54,12 @@ const schema = a.schema({
       participants: a.hasMany('RideParticipant', 'rideOfferId'),
     })
     .authorization((allow) => [
-      allow.guest().to(['read']), // Anyone can browse rides
+      // Allow guests to browse available rides only (read-only)
+      allow.guest().to(['read']).where((allow) => allow.status().eq('available')),
+      // Authenticated users can read all rides and create new ones
       allow.authenticated().to(['read', 'create', 'update', 'delete']),
+      // Note: Application logic should enforce that only the host can update/delete their own rides
+      // by checking hostId matches authenticated user's ID
     ]),
 
   // Ride Participant Model (Join table for riders in a ride)
