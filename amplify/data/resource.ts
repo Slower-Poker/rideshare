@@ -46,7 +46,7 @@ const schema = a.schema({
       departureTime: a.datetime().required(),
       availableSeats: a.integer().required(),
       seatsBooked: a.integer().default(0),
-      status: a.enum(['available', 'matched', 'active', 'completed', 'cancelled']).default('available'),
+      status: a.enum(['available', 'matched', 'active', 'completed', 'cancelled']),
       vehicleInfo: a.string(),
       notes: a.string(),
       // Relationships
@@ -54,12 +54,13 @@ const schema = a.schema({
       participants: a.hasMany('RideParticipant', 'rideOfferId'),
     })
     .authorization((allow) => [
-      // Allow guests to browse available rides only (read-only)
-      allow.guest().to(['read']).where((allow) => allow.status().eq('available')),
+      // Allow guests to read rides (filtering by status should be done in application code)
+      allow.guest().to(['read']),
       // Authenticated users can read all rides and create new ones
       allow.authenticated().to(['read', 'create', 'update', 'delete']),
       // Note: Application logic should enforce that only the host can update/delete their own rides
       // by checking hostId matches authenticated user's ID
+      // Note: Filtering available rides for guests should be done in application queries
     ]),
 
   // Ride Participant Model (Join table for riders in a ride)
@@ -67,7 +68,7 @@ const schema = a.schema({
     .model({
       rideOfferId: a.id().required(),
       riderId: a.id().required(),
-      status: a.enum(['pending', 'approved', 'declined', 'cancelled']).default('pending'),
+      status: a.enum(['pending', 'approved', 'declined', 'cancelled']),
       pickupLatitude: a.float(),
       pickupLongitude: a.float(),
       pickupAddress: a.string(),
