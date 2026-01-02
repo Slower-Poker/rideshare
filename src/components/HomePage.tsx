@@ -1,7 +1,7 @@
-import { Car, Map, User, Menu } from 'lucide-react';
+import { Car, Map, User } from 'lucide-react';
 import type { SharedProps } from '../types';
 
-export function HomePage({ currentView, setCurrentView, user }: SharedProps) {
+export function HomePage({ setCurrentView, user }: SharedProps) {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}

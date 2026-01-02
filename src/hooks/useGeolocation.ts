@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { Location } from '../types';
 import { getCurrentPosition, positionToLocation } from '../utils/geoUtils';
 import { handleError } from '../utils/errorHandler';

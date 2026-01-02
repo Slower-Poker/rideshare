@@ -53,7 +53,7 @@ export function RideMapView({ setCurrentView }: SharedProps) {
           />
           
           {/* TODO: Add ride markers when data is available */}
-          {rides.map((ride: never) => (
+          {rides.map(() => (
             <Marker
               key={`ride-marker-placeholder`}
               position={[0, 0]}

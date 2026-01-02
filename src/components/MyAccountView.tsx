@@ -11,6 +11,7 @@ interface MyAccountViewProps extends SharedProps {
 }
 
 function AuthenticatedContent({ 
+  currentView: _currentView,
   setCurrentView, 
   user,
   onAuthChange 
@@ -88,22 +89,11 @@ function AuthenticatedContent({
 }
 
 export function MyAccountView({ 
+  currentView,
   setCurrentView, 
   user,
   onAuthChange 
 }: MyAccountViewProps) {
-  const handleSignOut = async () => {
-    try {
-      await signOut();
-      toast.success('Signed out successfully');
-      onAuthChange();
-      setCurrentView('home');
-    } catch (error) {
-      console.error('Error signing out:', error);
-      toast.error('Failed to sign out');
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -124,6 +114,7 @@ export function MyAccountView({
       <main className="max-w-3xl mx-auto px-4 py-8">
         {user ? (
           <AuthenticatedContent 
+            currentView={currentView}
             setCurrentView={setCurrentView}
             user={user}
             onAuthChange={onAuthChange}
@@ -137,6 +128,7 @@ export function MyAccountView({
               signUpAttributes={['given_name', 'family_name', 'phone_number']}
             >
               <AuthenticatedContent 
+                currentView={currentView}
                 setCurrentView={setCurrentView}
                 user={null}
                 onAuthChange={onAuthChange}

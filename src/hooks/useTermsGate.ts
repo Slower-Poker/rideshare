@@ -39,14 +39,18 @@ export function useTermsGate(user: AuthUser | null) {
 
       if (profiles && profiles.length > 0) {
         const profile = profiles[0];
-        setUserProfile(profile);
-        
-        // Check if terms are accepted and version is current
-        const accepted = 
-          profile.termsAccepted === true && 
-          profile.termsVersion === CURRENT_TERMS_VERSION;
-        
-        setTermsAccepted(accepted);
+        if (profile) {
+          setUserProfile(profile as Schema['UserProfile']['type']);
+          
+          // Check if terms are accepted and version is current
+          const accepted = 
+            profile.termsAccepted === true && 
+            profile.termsVersion === CURRENT_TERMS_VERSION;
+          
+          setTermsAccepted(accepted);
+        } else {
+          setTermsAccepted(false);
+        }
       } else {
         // Create user profile if it doesn't exist
         try {
@@ -113,6 +117,10 @@ export function useTermsGate(user: AuthUser | null) {
     }
 
     // Update existing profile
+    if (!userProfile) {
+      return false;
+    }
+
     try {
       const { data: updatedProfile, errors } = await client.models.UserProfile.update({
         id: userProfile.id,
