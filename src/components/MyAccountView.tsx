@@ -1,6 +1,6 @@
 import { Authenticator, useAuthenticator } from '@aws-amplify/ui-react';
 import { signOut } from 'aws-amplify/auth';
-import { ArrowLeft, LogOut, User } from 'lucide-react';
+import { ArrowLeft, LogOut, User, Settings, Wallet, Activity, Info, FileText } from 'lucide-react';
 import { useEffect, useEffectEvent } from 'react';
 import type { SharedProps } from '../types';
 import { toast } from '../utils/toast';
@@ -10,26 +10,13 @@ interface MyAccountViewProps extends SharedProps {
   onAuthChange: () => void;
 }
 
-function AuthenticatedContent({ 
+// Account content that doesn't require Authenticator context
+function AccountContent({ 
   currentView: _currentView,
   setCurrentView, 
   user,
   onAuthChange 
 }: MyAccountViewProps) {
-  const { user: authUser } = useAuthenticator();
-
-  // Use useEffectEvent to avoid dependency issues (React 19.2)
-  const handleAuthChange = useEffectEvent(() => {
-    onAuthChange();
-  });
-
-  // Trigger auth check when user signs in via Authenticator
-  useEffect(() => {
-    if (authUser && !user) {
-      handleAuthChange();
-    }
-  }, [authUser, user]); // onAuthChange not needed in deps due to useEffectEvent
-
   const handleSignOut = async () => {
     try {
       await signOut();
@@ -44,19 +31,27 @@ function AuthenticatedContent({
     }
   };
 
+  // Get user info from props (when user is already authenticated) or from authUser (when signing in)
+  const displayUser = user;
+
   return (
     <div className="space-y-6">
-      {/* User Info */}
+      {/* Profile and Account Section */}
       <div className="bg-white rounded-lg shadow-md p-6">
-        <div className="flex items-center gap-4 mb-6">
+        <div className="flex items-center gap-3 mb-6">
+          <User className="w-6 h-6 text-primary-600" />
+          <h2 className="text-2xl font-bold text-gray-900">Profile and Account</h2>
+        </div>
+        
+        <div className="flex items-center gap-4 mb-6 pb-6 border-b border-gray-200">
           <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center">
             <User className="w-8 h-8 text-primary-600" />
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">
-              {user?.username || authUser?.username || 'User'}
-            </h2>
-            <p className="text-gray-600">{user?.email || authUser?.signInDetails?.loginId || ''}</p>
+            <h3 className="text-xl font-semibold text-gray-900">
+              {displayUser?.username || 'User'}
+            </h3>
+            <p className="text-gray-600">{displayUser?.email || ''}</p>
           </div>
         </div>
 
@@ -83,16 +78,111 @@ function AuthenticatedContent({
         </button>
       </div>
 
-      {/* Profile Settings */}
+      {/* Settings Section */}
       <div className="bg-white rounded-lg shadow-md p-6">
-        <h3 className="text-xl font-bold text-gray-900 mb-4">
-          Profile Settings
-        </h3>
+        <div className="flex items-center gap-3 mb-4">
+          <Settings className="w-6 h-6 text-primary-600" />
+          <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
+        </div>
         <p className="text-gray-600">
-          Profile customization coming soon...
+          Manage your preferences, notifications, and privacy settings.
+        </p>
+        <p className="text-sm text-gray-500 mt-2">
+          Settings customization coming soon...
         </p>
       </div>
+
+      {/* Wallet & Activity Section */}
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="flex items-center gap-2">
+            <Wallet className="w-6 h-6 text-primary-600" />
+            <Activity className="w-6 h-6 text-primary-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900">Wallet & Activity</h2>
+        </div>
+        <p className="text-gray-600">
+          View your payment methods, transaction history, and ride activity.
+        </p>
+        <p className="text-sm text-gray-500 mt-2">
+          Wallet and activity features coming soon...
+        </p>
+      </div>
+
+      {/* About Section */}
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <Info className="w-6 h-6 text-primary-600" />
+          <h2 className="text-2xl font-bold text-gray-900">About</h2>
+        </div>
+        <div className="space-y-3 text-gray-600">
+          <p>
+            RideShare.Click is a community-owned ride sharing platform that connects neighbors 
+            and helps reduce carbon emissions through shared transportation.
+          </p>
+          <p className="text-sm">
+            Version 1.0.0
+          </p>
+        </div>
+      </div>
+
+      {/* Legal Section */}
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <FileText className="w-6 h-6 text-primary-600" />
+          <h2 className="text-2xl font-bold text-gray-900">Legal</h2>
+        </div>
+        <div className="space-y-3">
+          <button
+            onClick={() => setCurrentView('terms')}
+            className="text-primary-600 hover:text-primary-700 hover:underline text-left"
+          >
+            Terms of Service
+          </button>
+          <p className="text-sm text-gray-500">
+            Privacy policy and other legal documents coming soon...
+          </p>
+        </div>
+      </div>
     </div>
+  );
+}
+
+// AuthenticatedContent that uses useAuthenticator (only used inside Authenticator)
+function AuthenticatedContent({ 
+  currentView,
+  setCurrentView, 
+  user,
+  onAuthChange 
+}: MyAccountViewProps) {
+  const { user: authUser } = useAuthenticator();
+
+  // Use useEffectEvent to avoid dependency issues (React 19.2)
+  const handleAuthChange = useEffectEvent(() => {
+    onAuthChange();
+  });
+
+  // Trigger auth check when user signs in via Authenticator
+  useEffect(() => {
+    if (authUser && !user) {
+      handleAuthChange();
+    }
+  }, [authUser, user]); // onAuthChange not needed in deps due to useEffectEvent
+
+  // Use authUser data when available, otherwise use user prop
+  const displayUser = user || {
+    userId: authUser?.userId || '',
+    email: authUser?.signInDetails?.loginId || '',
+    username: authUser?.username || '',
+  };
+
+  return (
+    <AccountContent
+      currentView={currentView}
+      setCurrentView={setCurrentView}
+      user={displayUser}
+      onAuthChange={onAuthChange}
+    />
   );
 }
 
@@ -121,7 +211,7 @@ export function MyAccountView({
       {/* Main Content */}
       <main className="max-w-3xl mx-auto px-4 py-8">
         {user ? (
-          <AuthenticatedContent 
+          <AccountContent 
             currentView={currentView}
             setCurrentView={setCurrentView}
             user={user}

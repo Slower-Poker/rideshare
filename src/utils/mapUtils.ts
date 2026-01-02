@@ -6,13 +6,15 @@ import type { Location } from '../types';
  * Helper functions for Leaflet map integration
  */
 
-// Default map center (Winnipeg, Manitoba)
+// Default map center (Winnipeg, Manitoba - more central to populated areas)
 export const DEFAULT_CENTER: [number, number] = [49.8951, -97.1384];
-export const DEFAULT_ZOOM = 12;
+export const DEFAULT_ZOOM = 10; // Lower zoom to show more of Manitoba initially
 
-// Map tile layer URL (OpenStreetMap)
+// Map tile layer URL (OpenStreetMap standard tile server)
+// Using standard OSM tile server with subdomain rotation for reliability
 export const TILE_LAYER_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-export const TILE_LAYER_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+export const TILE_LAYER_ATTRIBUTION =
+  '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 /**
  * Create custom marker icon for ride offers

@@ -44,6 +44,23 @@ export default defineConfig({
                 statuses: [0, 200]
               }
             }
+          },
+          {
+            // Cache OpenStreetMap tiles for better performance
+            urlPattern: /^https:\/\/([a-c])\.tile\.openstreetmap\.org\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'osm-tiles-cache',
+              expiration: {
+                maxEntries: 1000, // Cache up to 1000 tiles
+                maxAgeSeconds: 7 * 24 * 60 * 60 // 7 days (OSM tiles don't change often)
+              },
+              cacheableResponse: {
+                statuses: [0, 200]
+              },
+              // Use network if cache fails
+              networkTimeoutSeconds: 3
+            }
           }
         ]
       }

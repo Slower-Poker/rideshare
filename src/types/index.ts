@@ -7,7 +7,7 @@ export type RideParticipant = Schema['RideParticipant']['type'];
 export type RideRating = Schema['RideRating']['type'];
 
 // View types for routing
-export type ViewType = 'home' | 'map' | 'activeRide' | 'account' | 'terms';
+export type ViewType = 'home' | 'map' | 'activeRide' | 'account' | 'terms' | 'bookRide';
 
 // User types
 export type UserType = 'host' | 'rider' | 'both';

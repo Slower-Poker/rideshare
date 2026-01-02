@@ -7,8 +7,4 @@ if (!rootElement) {
   throw new Error('Root element not found. Make sure there is a <div id="root"></div> in your HTML.');
 }
 
-ReactDOM.createRoot(rootElement).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-);
+ReactDOM.createRoot(rootElement).render(<App />);

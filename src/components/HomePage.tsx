@@ -66,6 +66,23 @@ export function HomePage({ setCurrentView, user }: SharedProps) {
         <div className="grid md:grid-cols-2 gap-6 mb-12">
           <div className="bg-white rounded-lg shadow-md p-8 hover:shadow-lg transition-shadow">
             <h3 className="text-2xl font-bold text-gray-900 mb-4">
+              Book a Ride
+            </h3>
+            <p id="book-ride-description" className="text-gray-600 mb-6">
+              Select your pickup and dropoff locations on the map. Search for addresses or click directly on the map to choose your route.
+            </p>
+            <button
+              onClick={() => setCurrentView('bookRide')}
+              className="w-full bg-primary-600 text-white py-3 px-6 rounded-lg hover:bg-primary-700 transition-colors"
+              aria-label="Book a ride by selecting pickup and dropoff locations"
+              aria-describedby="book-ride-description"
+            >
+              Book a Ride
+            </button>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-md p-8 hover:shadow-lg transition-shadow">
+            <h3 className="text-2xl font-bold text-gray-900 mb-4">
               Offer a Ride
             </h3>
             <p id="offer-ride-description" className="text-gray-600 mb-6">

@@ -25,8 +25,10 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   private handleReset = () => {
-    this.setState({ hasError: false, error: null });
-    window.location.reload();
+    // Set a flag to indicate we're recovering from an error
+    sessionStorage.setItem('errorRecovery', 'true');
+    // Navigate to home page instead of just reloading
+    window.location.href = '/';
   };
 
   public render() {

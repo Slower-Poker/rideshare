@@ -2,8 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Leaflet CSS */
-@import 'leaflet/dist/leaflet.css';
+/* MapLibre GL JS CSS will be loaded dynamically from CDN */
 
 /* Base styles */
 :root {
@@ -28,16 +27,39 @@ html, body, #root {
   padding: 0;
 }
 
-/* Leaflet map container */
-.leaflet-container {
+/* MapLibre GL JS map container - ensure it's visible and properly positioned */
+.maplibregl-map {
   height: 100%;
   width: 100%;
-  z-index: 0;
+  position: relative;
+  background-color: #f4f4f4;
 }
 
-/* Fix Leaflet marker icons (they don't load properly by default in Vite) */
-.leaflet-default-icon-path {
-  background-image: url('https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png');
+/* Ensure map container div properly contains the map */
+#booka-ride-map-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  overflow: hidden;
+  height: 100%;
+  width: 100%;
+  isolation: isolate;
+  contain: layout style paint;
+}
+
+/* MapLibre controls styling */
+.maplibregl-ctrl {
+  z-index: 7;
+}
+
+/* Custom marker styles */
+.pickup-marker,
+.dropoff-marker,
+.user-location-marker {
+  cursor: pointer;
 }
 
 /* Accessibility: Focus visible */
