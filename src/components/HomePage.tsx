@@ -1,5 +1,6 @@
 import { Car, Map, User } from 'lucide-react';
 import type { SharedProps } from '../types';
+import { toast } from '../utils/toast';
 
 export function HomePage({ setCurrentView, user }: SharedProps) {
   return (
@@ -16,7 +17,7 @@ export function HomePage({ setCurrentView, user }: SharedProps) {
             <button
               onClick={() => setCurrentView('map')}
               className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:text-primary-600 transition-colors"
-              aria-label="View map"
+              aria-label="View map of available rides"
             >
               <Map className="w-5 h-5" />
               <span className="hidden sm:inline">Map</span>
@@ -25,7 +26,7 @@ export function HomePage({ setCurrentView, user }: SharedProps) {
             <button
               onClick={() => setCurrentView('account')}
               className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:text-primary-600 transition-colors"
-              aria-label="My account"
+              aria-label="View my account settings"
             >
               <User className="w-5 h-5" />
               <span className="hidden sm:inline">Account</span>
@@ -67,13 +68,21 @@ export function HomePage({ setCurrentView, user }: SharedProps) {
             <h3 className="text-2xl font-bold text-gray-900 mb-4">
               Offer a Ride
             </h3>
-            <p className="text-gray-600 mb-6">
+            <p id="offer-ride-description" className="text-gray-600 mb-6">
               Share your empty seats with others heading the same way. Earn karma and help your community.
             </p>
             <button
-              onClick={() => user ? alert('Create ride modal coming soon!') : setCurrentView('account')}
+              onClick={() => {
+                if (user) {
+                  toast.info('Create ride modal coming soon!');
+                } else {
+                  setCurrentView('account');
+                }
+              }}
               className="w-full bg-primary-600 text-white py-3 px-6 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={!user}
+              aria-label={user ? 'Create a new ride offer' : 'Sign in to create a ride offer'}
+              aria-describedby="offer-ride-description"
             >
               {user ? 'Create Ride Offer' : 'Sign In to Offer'}
             </button>
@@ -89,6 +98,7 @@ export function HomePage({ setCurrentView, user }: SharedProps) {
             <button
               onClick={() => setCurrentView('map')}
               className="w-full bg-gray-200 text-gray-900 py-3 px-6 rounded-lg hover:bg-gray-300 transition-colors"
+              aria-label="View available rides on the map"
             >
               View Available Rides
             </button>

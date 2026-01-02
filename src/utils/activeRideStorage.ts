@@ -23,14 +23,18 @@ export function getActiveRide(): ActiveRideData | null {
     
     // Validate data has required fields
     if (!data.rideOfferId || !data.role) {
-      console.warn('Invalid active ride data in localStorage');
+      if (import.meta.env.DEV) {
+        console.warn('Invalid active ride data in localStorage');
+      }
       clearActiveRide();
       return null;
     }
     
     return data;
   } catch (error) {
-    console.error('Error reading active ride from localStorage:', error);
+    if (import.meta.env.DEV) {
+      console.error('Error reading active ride from localStorage:', error);
+    }
     clearActiveRide();
     return null;
   }
@@ -47,7 +51,9 @@ export function setActiveRide(data: ActiveRideData): void {
     };
     localStorage.setItem(ACTIVE_RIDE_KEY, JSON.stringify(dataToStore));
   } catch (error) {
-    console.error('Error saving active ride to localStorage:', error);
+    if (import.meta.env.DEV) {
+      console.error('Error saving active ride to localStorage:', error);
+    }
   }
 }
 
@@ -58,7 +64,9 @@ export function clearActiveRide(): void {
   try {
     localStorage.removeItem(ACTIVE_RIDE_KEY);
   } catch (error) {
-    console.error('Error clearing active ride from localStorage:', error);
+    if (import.meta.env.DEV) {
+      console.error('Error clearing active ride from localStorage:', error);
+    }
   }
 }
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Amplify } from 'aws-amplify';
 import { getCurrentUser } from 'aws-amplify/auth';
 import { ToastContainer } from 'react-toastify';
@@ -24,12 +24,7 @@ function App() {
 
   const { termsAccepted, loading: termsLoading, acceptTerms } = useTermsGate(user);
 
-  // Check authentication status on mount
-  useEffect(() => {
-    checkAuthStatus();
-  }, []);
-
-  const checkAuthStatus = async () => {
+  const checkAuthStatus = useCallback(async () => {
     try {
       const currentUser = await getCurrentUser();
       setUser({
@@ -47,7 +42,12 @@ function App() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // Check authentication status on mount
+  useEffect(() => {
+    checkAuthStatus();
+  }, [checkAuthStatus]);
 
   // Show terms page if user hasn't accepted current version
   useEffect(() => {

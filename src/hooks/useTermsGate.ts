@@ -31,26 +31,24 @@ export function useTermsGate(user: AuthUser | null) {
       });
 
       if (errors) {
-        console.error('Error fetching user profile:', errors);
+        if (import.meta.env.DEV) {
+          console.error('Error fetching user profile:', errors);
+        }
         setTermsAccepted(false);
         setLoading(false);
         return;
       }
 
-      if (profiles && profiles.length > 0) {
-        const profile = profiles[0];
-        if (profile) {
-          setUserProfile(profile as Schema['UserProfile']['type']);
-          
-          // Check if terms are accepted and version is current
-          const accepted = 
-            profile.termsAccepted === true && 
-            profile.termsVersion === CURRENT_TERMS_VERSION;
-          
-          setTermsAccepted(accepted);
-        } else {
-          setTermsAccepted(false);
-        }
+      const profile = profiles?.[0];
+      if (profile) {
+        setUserProfile(profile as Schema['UserProfile']['type']);
+        
+        // Check if terms are accepted and version is current
+        const accepted = 
+          profile.termsAccepted === true && 
+          profile.termsVersion === CURRENT_TERMS_VERSION;
+        
+        setTermsAccepted(accepted);
       } else {
         // Create user profile if it doesn't exist
         try {
@@ -62,19 +60,25 @@ export function useTermsGate(user: AuthUser | null) {
           });
           
           if (createErrors) {
-            console.error('Error creating user profile:', createErrors);
+            if (import.meta.env.DEV) {
+              console.error('Error creating user profile:', createErrors);
+            }
             setTermsAccepted(false);
           } else if (newProfile) {
             setUserProfile(newProfile);
             setTermsAccepted(false);
           }
         } catch (createError) {
-          console.error('Error creating user profile:', createError);
+          if (import.meta.env.DEV) {
+            console.error('Error creating user profile:', createError);
+          }
           setTermsAccepted(false);
         }
       }
     } catch (error) {
-      console.error('Error checking terms acceptance:', error);
+      if (import.meta.env.DEV) {
+        console.error('Error checking terms acceptance:', error);
+      }
       setTermsAccepted(false);
     } finally {
       setLoading(false);
@@ -82,7 +86,20 @@ export function useTermsGate(user: AuthUser | null) {
   }, [user]);
 
   useEffect(() => {
-    checkTermsAcceptance();
+    const abortController = new AbortController();
+    let isMounted = true;
+
+    const runCheck = async () => {
+      if (abortController.signal.aborted || !isMounted) return;
+      await checkTermsAcceptance();
+    };
+
+    runCheck();
+
+    return () => {
+      isMounted = false;
+      abortController.abort();
+    };
   }, [checkTermsAcceptance]);
 
   const acceptTerms = async () => {
@@ -101,7 +118,9 @@ export function useTermsGate(user: AuthUser | null) {
         });
 
         if (createErrors) {
-          console.error('Error creating user profile:', createErrors);
+          if (import.meta.env.DEV) {
+            console.error('Error creating user profile:', createErrors);
+          }
           return false;
         }
 
@@ -111,7 +130,9 @@ export function useTermsGate(user: AuthUser | null) {
           return true;
         }
       } catch (error) {
-        console.error('Error creating user profile:', error);
+        if (import.meta.env.DEV) {
+          console.error('Error creating user profile:', error);
+        }
         return false;
       }
     }
@@ -130,7 +151,9 @@ export function useTermsGate(user: AuthUser | null) {
       });
 
       if (errors) {
-        console.error('Error updating terms acceptance:', errors);
+        if (import.meta.env.DEV) {
+          console.error('Error updating terms acceptance:', errors);
+        }
         return false;
       }
 
@@ -142,7 +165,9 @@ export function useTermsGate(user: AuthUser | null) {
 
       return false;
     } catch (error) {
-      console.error('Error accepting terms:', error);
+      if (import.meta.env.DEV) {
+        console.error('Error accepting terms:', error);
+      }
       return false;
     }
   };

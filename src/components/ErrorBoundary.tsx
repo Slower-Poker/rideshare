@@ -44,6 +44,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <button
               onClick={this.handleReset}
               className="w-full bg-primary-600 text-white py-2 px-4 rounded-lg hover:bg-primary-700 transition-colors"
+              aria-label="Reload the page to recover from error"
             >
               Reload Page
             </button>

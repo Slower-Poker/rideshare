@@ -1,436 +1,73 @@
-# Code Review Report - AWS Amplify Gen 2 + React TypeScript
+# Code Review Report
 
 ## Summary
-- 🔴 **Errors**: 8
-- 🟠 **Warnings**: 12
-- 🟡 **Suggestions**: 15
-- 🔵 **Info**: 8
-
----
+- 🔴 Errors: 5
+- 🟠 Warnings: 8
+- 🟡 Suggestions: 12
+- 🔵 Info: 4
 
 ## Critical Issues (Fix Immediately) 🔴
 
-### 1. **Missing Error Handling in Amplify Data Operations**
-**File**: `src/hooks/useTermsGate.ts` (Lines 34-36, 63-68)
-**Category**: Amplify | Runtime Crash Risk
+### 1. **Missing Dependency in useEffect**
+**File**: `src/App.tsx` (Line 28-30)
+**Category**: React | Runtime Crash Risk
 **Severity**: 🔴 Error
 
-**Issue**: Missing error destructuring from Amplify responses. The `list()` and `update()` operations return `{ data, errors }` but only `data` is being destructured.
+**Issue**: `checkAuthStatus` is called in `useEffect` but not included in dependency array, causing ESLint exhaustive-deps warning and potential stale closure issues.
 
 **Problem Code**:
 ```typescript
-const { data: profiles } = await client.models.UserProfile.list({
-  filter: { userId: { eq: user.userId } },
-});
+useEffect(() => {
+  checkAuthStatus();
+}, []);
 ```
 
-**Fix**:
+**Fix**: Add `checkAuthStatus` to dependencies or wrap it in `useCallback`:
 ```typescript
-const { data: profiles, errors } = await client.models.UserProfile.list({
-  filter: { userId: { eq: user.userId } },
-});
-
-if (errors) {
-  console.error('Error fetching user profile:', errors);
-  setTermsAccepted(false);
-  setLoading(false);
-  return;
-}
-```
-
-**Also fix the update operation**:
-```typescript
-const { data: updatedProfile, errors } = await client.models.UserProfile.update({
-  id: userProfile.id,
-  termsAccepted: true,
-  termsVersion: CURRENT_TERMS_VERSION,
-  termsAcceptedDate: new Date().toISOString(),
-});
-
-if (errors) {
-  console.error('Error updating terms acceptance:', errors);
-  return false;
-}
-```
-
----
-
-### 2. **Missing UserProfile Creation Logic**
-**File**: `src/hooks/useTermsGate.ts` (Line 48-49)
-**Category**: Amplify | Runtime Crash Risk
-**Severity**: 🔴 Error
-
-**Issue**: When a user profile doesn't exist, the code sets `termsAccepted` to false but never creates the profile. This means new users can never accept terms.
-
-**Problem Code**:
-```typescript
-} else {
-  setTermsAccepted(false);
-}
-```
-
-**Fix**: Add profile creation logic:
-```typescript
-} else {
-  // Create user profile if it doesn't exist
+const checkAuthStatus = useCallback(async () => {
   try {
-    const { data: newProfile, errors: createErrors } = await client.models.UserProfile.create({
-      userId: user.userId,
-      email: user.email,
-      username: user.username,
-      termsAccepted: false,
+    const currentUser = await getCurrentUser();
+    setUser({
+      userId: currentUser.userId,
+      email: currentUser.signInDetails?.loginId || '',
+      username: currentUser.username,
     });
-    
-    if (createErrors) {
-      console.error('Error creating user profile:', createErrors);
-      setTermsAccepted(false);
-    } else if (newProfile) {
-      setUserProfile(newProfile);
-      setTermsAccepted(false);
-    }
   } catch (error) {
-    console.error('Error creating user profile:', error);
-    setTermsAccepted(false);
-  }
-}
-```
-
----
-
-### 3. **Missing Dependency Array in useEffect**
-**File**: `src/hooks/useTermsGate.ts` (Line 27)
-**Category**: React | Runtime Crash Risk
-**Severity**: 🔴 Error
-
-**Issue**: `checkTermsAcceptance` is called in useEffect but not included in dependency array, causing stale closure issues.
-
-**Problem Code**:
-```typescript
-useEffect(() => {
-  if (!user) {
-    setLoading(false);
-    setTermsAccepted(false);
-    return;
-  }
-
-  checkTermsAcceptance();
-}, [user]);
-```
-
-**Fix**: Either move the function inside useEffect or use useCallback:
-```typescript
-useEffect(() => {
-  if (!user) {
-    setLoading(false);
-    setTermsAccepted(false);
-    return;
-  }
-
-  const checkTermsAcceptance = async () => {
-    // ... function body
-  };
-
-  checkTermsAcceptance();
-}, [user]);
-```
-
----
-
-### 4. **Non-null Assertion on Potentially Null Element**
-**File**: `src/main.tsx` (Line 5)
-**Category**: TypeScript | Runtime Crash Risk
-**Severity**: 🔴 Error
-
-**Issue**: Using `!` operator on `getElementById` which can return null.
-
-**Problem Code**:
-```typescript
-ReactDOM.createRoot(document.getElementById('root')!).render(
-```
-
-**Fix**:
-```typescript
-const rootElement = document.getElementById('root');
-if (!rootElement) {
-  throw new Error('Root element not found');
-}
-ReactDOM.createRoot(rootElement).render(
-```
-
----
-
-### 5. **Missing Error Handling in App.tsx checkAuthStatus**
-**File**: `src/App.tsx` (Line 32-46)
-**Category**: React | Runtime Crash Risk
-**Severity**: 🔴 Error
-
-**Issue**: Empty catch block swallows errors without logging or handling them properly.
-
-**Problem Code**:
-```typescript
-} catch {
-  // User not authenticated
-  setUser(null);
-}
-```
-
-**Fix**:
-```typescript
-} catch (error) {
-  // User not authenticated or error occurred
-  console.debug('User not authenticated or auth check failed:', error);
-  setUser(null);
-} finally {
-  setLoading(false);
-}
-```
-
----
-
-### 6. **Missing await on Async Operation**
-**File**: `src/components/MyAccountView.tsx` (Line 106)
-**Category**: React | Runtime Crash Risk
-**Severity**: 🔴 Error
-
-**Issue**: `onAuthChange()` is called inside Authenticator render function but it's async and not awaited.
-
-**Problem Code**:
-```typescript
-<Authenticator>
-  {() => {
-    // User signed in, trigger auth check
-    onAuthChange();
-    return null;
-  }}
-</Authenticator>
-```
-
-**Fix**: Use useEffect to handle auth state changes:
-```typescript
-<Authenticator>
-  {({ signOut, user: authUser }) => {
-    useEffect(() => {
-      if (authUser) {
-        onAuthChange();
-      }
-    }, [authUser]);
-    return null;
-  }}
-</Authenticator>
-```
-
-**Better Fix**: Use `useAuthenticator` hook:
-```typescript
-import { useAuthenticator } from '@aws-amplify/ui-react';
-
-// In component:
-const { user: authUser } = useAuthenticator();
-
-useEffect(() => {
-  if (authUser) {
-    onAuthChange();
-  }
-}, [authUser, onAuthChange]);
-```
-
----
-
-### 7. **Schema Authorization Rule Issue - Overly Permissive Guest Access**
-**File**: `amplify/data/resource.ts` (Lines 30, 55)
-**Category**: Amplify | Security
-**Severity**: 🔴 Error
-
-**Issue**: Guest users can read all UserProfile and RideOffer data, which may expose sensitive information.
-
-**Problem Code**:
-```typescript
-allow.guest().to(['read']), // Public profile info
-```
-
-**Fix**: Restrict guest access to only necessary fields or remove it:
-```typescript
-.authorization((allow) => [
-  // Only allow reading public fields for guests
-  allow.publicApiKey().to(['read']), // Use API key for public browsing
-  allow.authenticated().to(['read', 'create', 'update', 'delete']),
-])
-```
-
-Or use field-level authorization:
-```typescript
-allow.guest().to(['read']).where((allow) => allow.publicFields().eq(true)),
-```
-
----
-
-### 8. **Missing Indexes for Queries**
-**File**: `amplify/data/resource.ts` (Line 34)
-**Category**: Amplify | Performance
-**Severity**: 🔴 Error
-
-**Issue**: Querying UserProfile by `userId` field requires an index, but none is defined.
-
-**Problem Code**:
-```typescript
-const { data: profiles } = await client.models.UserProfile.list({
-  filter: { userId: { eq: user.userId } },
-});
-```
-
-**Fix**: Add secondary index to schema:
-```typescript
-UserProfile: a
-  .model({
-    userId: a.id().required(),
-    // ... other fields
-  })
-  .secondaryIndexes((index) => [
-    index('userId').queryFields('userId'),
-  ])
-  .authorization(...)
-```
-
----
-
-## Warnings (Should Fix) 🟠
-
-### 9. **Missing Error Handling in useGeolocation**
-**File**: `src/hooks/useGeolocation.ts` (Line 20)
-**Category**: React | Runtime Crash Risk
-**Severity**: 🟠 Warning
-
-**Issue**: `getCurrentPosition` can throw, but error is caught generically. Should provide more specific error messages.
-
-**Current Code**: Already handles errors, but could be improved.
-
-**Suggestion**: Add specific error types:
-```typescript
-} catch (err) {
-  let errorMessage = 'Failed to get location';
-  if (err instanceof GeolocationPositionError) {
-    switch (err.code) {
-      case err.PERMISSION_DENIED:
-        errorMessage = 'Location permission denied';
-        break;
-      case err.POSITION_UNAVAILABLE:
-        errorMessage = 'Location unavailable';
-        break;
-      case err.TIMEOUT:
-        errorMessage = 'Location request timeout';
-        break;
+    if (import.meta.env.DEV) {
+      console.debug('User not authenticated or auth check failed:', error);
     }
-  } else if (err instanceof Error) {
-    errorMessage = err.message;
+    setUser(null);
+  } finally {
+    setLoading(false);
   }
-  setError(errorMessage);
-  handleError(err, 'geolocation');
-}
+}, []);
+
+useEffect(() => {
+  checkAuthStatus();
+}, [checkAuthStatus]);
 ```
 
 ---
 
-### 10. **Console.log/console.error Statements**
-**Files**: Multiple files
-**Category**: Code Quality
-**Severity**: 🟠 Warning
-
-**Issue**: Multiple `console.error` and `console.warn` statements should use proper logging or be removed for production.
-
-**Files Affected**:
-- `src/hooks/useTermsGate.ts` (Lines 52, 73)
-- `src/components/MyAccountView.tsx` (Line 24)
-- `src/utils/activeRideStorage.ts` (Lines 26, 33, 50, 61)
-- `src/utils/errorHandler.ts` (Line 19, 42)
-- `src/components/ErrorBoundary.tsx` (Line 24)
-
-**Fix**: Create a logging utility or use environment-based logging:
-```typescript
-// src/utils/logger.ts
-const isDevelopment = import.meta.env.DEV;
-
-export const logger = {
-  error: (...args: unknown[]) => {
-    if (isDevelopment) console.error(...args);
-    // In production, send to error tracking service
-  },
-  warn: (...args: unknown[]) => {
-    if (isDevelopment) console.warn(...args);
-  },
-  // ... other log levels
-};
-```
-
----
-
-### 11. **Missing Type Safety in RideMapView**
-**File**: `src/components/RideMapView.tsx` (Line 14, 56)
-**Category**: TypeScript | Code Quality
-**Severity**: 🟠 Warning
-
-**Issue**: Using `never[]` type for rides array and mapping over it with `never` type.
-
-**Problem Code**:
-```typescript
-const rides: never[] = [];
-// ...
-{rides.map((ride: never) => (
-```
-
-**Fix**: Use proper type:
-```typescript
-import type { RideOffer } from '../types';
-
-const rides: RideOffer[] = [];
-// ...
-{rides.map((ride) => (
-```
-
----
-
-### 12. **Missing Validation on User Input**
-**File**: `src/components/MyAccountView.tsx` (Line 100-109)
-**Category**: Security | Code Quality
-**Severity**: 🟠 Warning
-
-**Issue**: Authenticator component doesn't validate user input on the client side before submission.
-
-**Suggestion**: Add client-side validation using Zod schemas before Amplify processes the data.
-
----
-
-### 13. **Hardcoded Alert in HomePage**
-**File**: `src/components/HomePage.tsx` (Line 74)
-**Category**: Code Quality | UX
-**Severity**: 🟠 Warning
-
-**Issue**: Using `alert()` instead of proper toast notification.
-
-**Problem Code**:
-```typescript
-onClick={() => user ? alert('Create ride modal coming soon!') : setCurrentView('account')}
-```
-
-**Fix**:
-```typescript
-import { toast } from '../utils/toast';
-
-onClick={() => {
-  if (user) {
-    toast.info('Create ride modal coming soon!');
-  } else {
-    setCurrentView('account');
-  }
-}}
-```
-
----
-
-### 14. **Missing Loading State for Async Operations**
+### 2. **Missing Loading State for Async Operation**
 **File**: `src/components/TermsPage.tsx` (Line 15-23)
 **Category**: React | UX
-**Severity**: 🟠 Warning
+**Severity**: 🔴 Error
 
-**Issue**: `handleAccept` is async but doesn't show loading state during operation.
+**Issue**: `handleAccept` is async but doesn't show loading state during operation, leading to poor UX and potential double-submissions.
+
+**Problem Code**:
+```typescript
+const handleAccept = async () => {
+  const success = await onAcceptTerms();
+  if (success) {
+    toast.success('Terms accepted');
+    setCurrentView('home');
+  } else {
+    toast.error('Failed to accept terms');
+  }
+};
+```
 
 **Fix**: Add loading state:
 ```typescript
@@ -463,91 +100,194 @@ const handleAccept = async () => {
 
 ---
 
-### 15. **Missing Cleanup in useEffect**
-**File**: `src/hooks/useTermsGate.ts` (Line 19-27)
-**Category**: React | Memory Leak Risk
-**Severity**: 🟠 Warning
+### 3. **Using alert() Instead of Toast**
+**File**: `src/components/HomePage.tsx` (Line 74)
+**Category**: Code Quality | UX
+**Severity**: 🔴 Error
 
-**Issue**: No cleanup function to cancel in-flight requests if component unmounts.
-
-**Fix**: Add AbortController:
-```typescript
-useEffect(() => {
-  if (!user) {
-    setLoading(false);
-    setTermsAccepted(false);
-    return;
-  }
-
-  const abortController = new AbortController();
-
-  const checkTermsAcceptance = async () => {
-    // ... existing code
-  };
-
-  checkTermsAcceptance();
-
-  return () => {
-    abortController.abort();
-  };
-}, [user]);
-```
-
----
-
-### 16. **Schema Field Type Inconsistency**
-**File**: `amplify/data/resource.ts` (Line 23)
-**Category**: Amplify | Data Integrity
-**Severity**: 🟠 Warning
-
-**Issue**: `termsAcceptedDate` is defined as `a.string()` but should be `a.datetime()` for consistency.
+**Issue**: Using `alert()` instead of proper toast notification violates best practices and provides poor UX.
 
 **Problem Code**:
 ```typescript
-termsAcceptedDate: a.string(),
+onClick={() => user ? alert('Create ride modal coming soon!') : setCurrentView('account')}
 ```
 
 **Fix**:
 ```typescript
-termsAcceptedDate: a.datetime(),
+import { toast } from '../utils/toast';
+
+onClick={() => {
+  if (user) {
+    toast.info('Create ride modal coming soon!');
+  } else {
+    setCurrentView('account');
+  }
+}}
 ```
 
 ---
 
-### 17. **Missing Required Field Validation**
-**File**: `amplify/data/resource.ts` (Line 11)
-**Category**: Amplify | Data Integrity
-**Severity**: 🟠 Warning
+### 4. **Outdated eslint-plugin-react-hooks Version**
+**File**: `package.json` (Line 41)
+**Category**: React 19.2 | Build Configuration
+**Severity**: 🔴 Error
 
-**Issue**: `userId` is marked as required but should be auto-generated or validated to match authenticated user.
+**Issue**: `eslint-plugin-react-hooks` version is `^4.6.2`, but React 19.2 requires `^6.0.0` for proper hook linting.
 
-**Suggestion**: Consider using `owner` field pattern or add validation that userId matches the authenticated user's ID.
-
----
-
-### 18. **Missing Relationship Validation**
-**File**: `amplify/data/resource.ts` (Lines 51, 73-74)
-**Category**: Amplify | Data Integrity
-**Severity**: 🟠 Warning
-
-**Issue**: Foreign key relationships (`hostId`, `rideOfferId`, `riderId`) don't have validation to ensure referenced records exist.
-
-**Suggestion**: Add custom validation or use Amplify's built-in relationship validation.
+**Fix**: Update package.json:
+```json
+"eslint-plugin-react-hooks": "^6.0.0"
+```
 
 ---
 
-### 19. **Missing Error Boundary for Map Component**
-**File**: `src/components/RideMapView.tsx`
-**Category**: React | Error Handling
-**Severity**: 🟠 Warning
+### 5. **Missing Node.js Version Requirement**
+**File**: `package.json`
+**Category**: Vite 7.3.0 | Build Configuration
+**Severity**: 🔴 Error
 
-**Issue**: Leaflet map component can throw errors (e.g., if container not ready), but no error boundary.
+**Issue**: Missing `engines` field specifying Node.js version requirement. Vite 7.3.0 requires Node.js 20.19+ or 22.12+.
 
-**Suggestion**: Wrap map in error boundary or add try-catch for map initialization.
+**Fix**: Add to package.json:
+```json
+"engines": {
+  "node": ">=20.19.0"
+}
+```
 
 ---
 
-### 20. **Missing Accessibility Attributes**
+## Warnings (Should Fix) 🟠
+
+### 6. **Console Statements in Production Code**
+**Files**: Multiple files
+**Category**: Code Quality
+**Severity**: 🟠 Warning
+
+**Issue**: Multiple `console.error`, `console.debug`, and `console.warn` statements found. While some are appropriate for error boundaries, others should use proper logging service or be removed in production.
+
+**Files Affected**:
+- `src/hooks/useTermsGate.ts` (Lines 34, 65, 72, 77, 104, 114, 133, 145)
+- `src/components/MyAccountView.tsx` (Line 35)
+- `src/components/ErrorBoundary.tsx` (Line 24)
+- `src/App.tsx` (Line 44)
+- `src/utils/activeRideStorage.ts` (Lines 26, 33, 50, 61)
+- `src/utils/errorHandler.ts` (Lines 19, 42)
+
+**Suggestion**: 
+- Keep `console.error` in error boundaries and critical error handlers
+- Replace development-only logs with conditional logging: `if (import.meta.env.DEV) { console.debug(...) }`
+- Consider using a logging service for production errors
+
+---
+
+### 7. **Missing Cleanup in useEffect**
+**File**: `src/hooks/useTermsGate.ts` (Line 84-86)
+**Category**: React | Memory Leak Risk
+**Severity**: 🟠 Warning
+
+**Issue**: No cleanup function to cancel in-flight requests if component unmounts during async operation.
+
+**Fix**: Add AbortController:
+```typescript
+useEffect(() => {
+  const abortController = new AbortController();
+  
+  const checkTermsAcceptance = async () => {
+    if (abortController.signal.aborted) return;
+    // ... existing code
+  };
+  
+  checkTermsAcceptance();
+  
+  return () => {
+    abortController.abort();
+  };
+}, [checkTermsAcceptance]);
+```
+
+---
+
+### 8. **Missing Error Handling in useEffect Dependency**
+**File**: `src/components/MyAccountView.tsx` (Line 22-26)
+**Category**: React | Runtime Crash Risk
+**Severity**: 🟠 Warning
+
+**Issue**: `onAuthChange` is in dependency array but could cause infinite loops if not memoized.
+
+**Fix**: Ensure `onAuthChange` is memoized in parent component or use `useEffectEvent` (React 19.2):
+```typescript
+// In App.tsx
+const checkAuthStatus = useCallback(async () => {
+  // ... existing code
+}, []);
+
+// Or use useEffectEvent in MyAccountView.tsx (React 19.2)
+import { useEffectEvent } from 'react';
+
+const handleAuthChange = useEffectEvent(() => {
+  onAuthChange();
+});
+
+useEffect(() => {
+  if (authUser && !user) {
+    handleAuthChange();
+  }
+}, [authUser, user]); // onAuthChange not needed in deps
+```
+
+---
+
+### 9. **Incomplete Feature Implementation**
+**File**: `src/components/RideMapView.tsx` (Lines 13-14, 55)
+**Category**: Code Quality
+**Severity**: 🟠 Warning
+
+**Issue**: TODO comments indicate incomplete feature implementation. Empty `rides` array and placeholder markers.
+
+**Suggestion**: Implement ride fetching or mark as WIP with proper feature flags.
+
+---
+
+### 10. **Missing Type Safety in Array Access**
+**File**: `src/hooks/useTermsGate.ts` (Line 40-42)
+**Category**: TypeScript | Runtime Crash Risk
+**Severity**: 🟠 Warning
+
+**Issue**: Array access without bounds checking, though `limit: 1` is used.
+
+**Current Code**:
+```typescript
+if (profiles && profiles.length > 0) {
+  const profile = profiles[0];
+  if (profile) {
+    // ...
+  }
+}
+```
+
+**Note**: This is actually safe, but could be more explicit:
+```typescript
+const profile = profiles?.[0];
+if (profile) {
+  // ...
+}
+```
+
+---
+
+### 11. **Missing Validation on User Input**
+**File**: `src/components/MyAccountView.tsx` (Line 127-129)
+**Category**: Security | Code Quality
+**Severity**: 🟠 Warning
+
+**Issue**: Authenticator component doesn't validate user input on the client side before submission.
+
+**Suggestion**: Add client-side validation using Zod schemas before Amplify processes the data.
+
+---
+
+### 12. **Missing Accessibility Attributes**
 **Files**: Multiple component files
 **Category**: React | Accessibility
 **Severity**: 🟠 Warning
@@ -567,9 +307,27 @@ termsAcceptedDate: a.datetime(),
 
 ---
 
+### 13. **Potential Stale Closure in useTermsGate**
+**File**: `src/hooks/useTermsGate.ts` (Line 84-86)
+**Category**: React | Runtime Crash Risk
+**Severity**: 🟠 Warning
+
+**Issue**: `checkTermsAcceptance` is in dependency array but uses `user` from closure. Should ensure `user` is in dependencies or use `useEffectEvent`.
+
+**Current Code**:
+```typescript
+useEffect(() => {
+  checkTermsAcceptance();
+}, [checkTermsAcceptance]);
+```
+
+**Note**: This is actually correct since `checkTermsAcceptance` is wrapped in `useCallback` with `user` as dependency, but could be clearer.
+
+---
+
 ## Suggestions (Consider Fixing) 🟡
 
-### 21. **Missing React.memo for Expensive Components**
+### 14. **Missing React.memo for Expensive Components**
 **File**: `src/components/HomePage.tsx`
 **Category**: React | Performance
 **Severity**: 🟡 Suggestion
@@ -578,7 +336,7 @@ termsAcceptedDate: a.datetime(),
 
 ---
 
-### 22. **Missing useCallback for Event Handlers**
+### 15. **Missing useCallback for Event Handlers**
 **Files**: Multiple component files
 **Category**: React | Performance
 **Severity**: 🟡 Suggestion
@@ -594,8 +352,8 @@ const handleViewChange = useCallback((view: ViewType) => {
 
 ---
 
-### 23. **Missing Optimistic Updates**
-**File**: `src/hooks/useTermsGate.ts` (Line 59-76)
+### 16. **Missing Optimistic Updates**
+**File**: `src/hooks/useTermsGate.ts` (Line 88-148)
 **Category**: Amplify | UX
 **Severity**: 🟡 Suggestion
 
@@ -605,97 +363,72 @@ const handleViewChange = useCallback((view: ViewType) => {
 
 ---
 
-### 24. **Missing Pagination for List Queries**
-**File**: `src/hooks/useTermsGate.ts` (Line 34)
+### 17. **Missing Selection Set Optimization**
+**File**: `src/hooks/useTermsGate.ts` (Line 28-31)
 **Category**: Amplify | Performance
 **Severity**: 🟡 Suggestion
 
-**Issue**: `list()` query doesn't specify limit, could return large datasets.
+**Issue**: Query fetches all fields when only `termsAccepted` and `termsVersion` are needed.
 
-**Suggestion**: Add pagination:
+**Suggestion**: Use selectionSet to limit returned fields (if Amplify Gen 2 supports it):
 ```typescript
 const { data: profiles } = await client.models.UserProfile.list({
   filter: { userId: { eq: user.userId } },
-  limit: 1, // Only need one profile
+  limit: 1,
+  selectionSet: ['termsAccepted', 'termsVersion', 'id'],
 });
 ```
 
 ---
 
-### 25. **Missing Selection Set Optimization**
-**File**: `src/hooks/useTermsGate.ts` (Line 34)
-**Category**: Amplify | Performance
+### 18. **Consider Using useEffectEvent for Subscription Callbacks**
+**File**: Future subscription implementations
+**Category**: React 19.2 | Best Practice
 **Severity**: 🟡 Suggestion
 
-**Issue**: Fetching all fields when only `termsAccepted` and `termsVersion` are needed.
+**Issue**: When implementing real-time subscriptions, consider using `useEffectEvent` for callbacks to avoid dependency issues.
 
-**Suggestion**: Use selectionSet (if supported) or create a custom query.
+**Example**:
+```typescript
+import { useEffectEvent } from 'react';
+
+const handleRideUpdate = useEffectEvent((items: RideOffer[]) => {
+  setRides(items);
+  // Can safely use other state/props here without adding to deps
+});
+
+useEffect(() => {
+  const subscription = client.models.RideOffer.observeQuery().subscribe({
+    next: ({ items }) => handleRideUpdate(items),
+  });
+  return () => subscription.unsubscribe();
+}, []); // No deps needed for handleRideUpdate
+```
 
 ---
 
-### 26. **Missing Environment Variable for Terms Version**
-**File**: `src/hooks/useTermsGate.ts` (Line 8)
-**Category**: Code Quality
+### 19. **Consider Using Activity Component for Tab Views**
+**File**: `src/App.tsx` (Line 65-86)
+**Category**: React 19.2 | Best Practice
 **Severity**: 🟡 Suggestion
 
-**Issue**: Terms version hardcoded in component.
+**Issue**: View switching could benefit from React 19.2's `<Activity />` component for state preservation.
 
-**Suggestion**: Move to environment variable or config file.
+**Suggestion**: Consider using Activity for views that should preserve state:
+```typescript
+import { Activity } from 'react';
+
+<Activity mode={currentView === 'home' ? 'visible' : 'hidden'}>
+  <HomePage {...sharedProps} />
+</Activity>
+<Activity mode={currentView === 'map' ? 'visible' : 'hidden'}>
+  <RideMapView {...sharedProps} />
+</Activity>
+```
 
 ---
 
-### 27. **Missing Type Guards**
-**Files**: Multiple utility files
-**Category**: TypeScript | Code Quality
-**Severity**: 🟡 Suggestion
-
-**Issue**: Type assertions used without validation (e.g., `as ActiveRideData`).
-
-**Suggestion**: Add runtime validation with Zod schemas.
-
----
-
-### 28. **Missing Input Sanitization**
-**File**: `src/components/TermsPage.tsx`
-**Category**: Security
-**Severity**: 🟡 Suggestion
-
-**Issue**: Terms content is hardcoded, but if it comes from API, should sanitize HTML.
-
-**Suggestion**: Use DOMPurify or similar for any user-generated or API-sourced content.
-
----
-
-### 29. **Missing Error Recovery UI**
-**File**: `src/components/ErrorBoundary.tsx`
-**Category**: React | UX
-**Severity**: 🟡 Suggestion
-
-**Issue**: Error boundary only offers page reload, no partial recovery.
-
-**Suggestion**: Add "Try Again" button that resets specific state.
-
----
-
-### 30. **Missing Loading Skeletons**
-**Files**: Multiple component files
-**Category**: React | UX
-**Severity**: 🟡 Suggestion
-
-**Issue**: Only generic loading spinner, no skeleton screens for better UX.
-
----
-
-### 31. **Missing Empty State Handling**
-**File**: `src/components/RideMapView.tsx` (Line 70-75)
-**Category**: React | UX
-**Severity**: 🟡 Suggestion
-
-**Issue**: Empty state exists but could be more informative with action buttons.
-
----
-
-### 32. **Missing Code Splitting**
+### 20. **Missing Code Splitting**
 **File**: `src/App.tsx`
 **Category**: React | Performance
 **Severity**: 🟡 Suggestion
@@ -705,210 +438,240 @@ const { data: profiles } = await client.models.UserProfile.list({
 **Suggestion**: Use `React.lazy()` for route-based code splitting:
 ```typescript
 const RideMapView = React.lazy(() => import('./components/RideMapView'));
+const MyAccountView = React.lazy(() => import('./components/MyAccountView'));
 ```
 
 ---
 
-### 33. **Missing Real-time Subscriptions**
+### 21. **Missing Real-time Subscriptions**
 **File**: `src/components/RideMapView.tsx`
 **Category**: Amplify | Feature
 **Severity**: 🟡 Suggestion
 
 **Issue**: Map view doesn't use real-time subscriptions for ride updates.
 
-**Suggestion**: Add subscription for new/updated rides:
-```typescript
-useEffect(() => {
-  const subscription = client.models.RideOffer.observeQuery().subscribe({
-    next: ({ items }) => setRides(items),
-  });
-  return () => subscription.unsubscribe();
-}, []);
+**Suggestion**: Add subscription for new/updated rides when implementing ride fetching.
+
+---
+
+### 22. **Missing Error Recovery in Terms Acceptance**
+**File**: `src/hooks/useTermsGate.ts` (Line 88-148)
+**Category**: Amplify | UX
+**Severity**: 🟡 Suggestion
+
+**Issue**: If profile update fails, no retry mechanism or user guidance.
+
+**Suggestion**: Add retry logic or better error messaging.
+
+---
+
+### 23. **Missing Input Sanitization**
+**Files**: Form components (when implemented)
+**Category**: Security
+**Severity**: 🟡 Suggestion
+
+**Issue**: Ensure all user inputs are sanitized before storing in database.
+
+**Suggestion**: Use Zod schemas for validation and sanitization.
+
+---
+
+### 24. **Missing ESLint Flat Config**
+**File**: Missing `eslint.config.js`
+**Category**: React 19.2 | Build Configuration
+**Severity**: 🟡 Suggestion
+
+**Issue**: No ESLint configuration file found. React 19.2 + ESLint 9 requires flat config.
+
+**Suggestion**: Create `eslint.config.js`:
+```javascript
+import js from '@eslint/js';
+import globals from 'globals';
+import reactHooks from 'eslint-plugin-react-hooks';
+import tseslint from 'typescript-eslint';
+
+export default tseslint.config(
+  { ignores: ['dist', 'amplify'] },
+  {
+    extends: [js.configs.recommended, ...tseslint.configs.recommended],
+    files: ['**/*.{ts,tsx}'],
+    languageOptions: {
+      ecmaVersion: 2024,
+      globals: globals.browser,
+    },
+    plugins: {
+      'react-hooks': reactHooks,
+    },
+    rules: {
+      ...reactHooks.configs.recommended.rules,
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+    },
+  }
+);
 ```
 
 ---
 
-### 34. **Missing Transaction Support**
-**File**: `src/hooks/useTermsGate.ts` (Line 59-76)
-**Category**: Amplify | Data Integrity
+### 25. **Missing Vite Build Target Configuration**
+**File**: `vite.config.ts`
+**Category**: Vite 7.3.0 | Build Configuration
 **Severity**: 🟡 Suggestion
 
-**Issue**: Profile update not wrapped in transaction if multiple fields need updating.
+**Issue**: Missing explicit `build.target` configuration. Vite 7 defaults to 'baseline-widely-available', but should be explicit.
 
----
-
-### 35. **Missing CORS Configuration Awareness**
-**File**: `amplify/data/resource.ts`
-**Category**: Amplify | Security
-**Severity**: 🟡 Suggestion
-
-**Issue**: No explicit CORS configuration visible (may be handled by Amplify, but should verify).
+**Suggestion**: Add to vite.config.ts:
+```typescript
+build: {
+  target: 'baseline-widely-available', // Explicit Vite 7 default
+  rollupOptions: {
+    // ... existing config
+  }
+}
+```
 
 ---
 
 ## Optimizations (Nice to Have) 🔵
 
-### 36. **Bundle Size Optimization**
+### 26. **Bundle Size Optimization**
 **File**: `vite.config.ts`
 **Category**: Performance
 **Severity**: 🔵 Info
 
-**Suggestion**: Already has manual chunks, but could add tree-shaking analysis.
+**Suggestion**: Already has manual chunks, but could add tree-shaking analysis and bundle size monitoring.
 
 ---
 
-### 37. **Image Optimization**
+### 27. **Image Optimization**
 **File**: `src/utils/mapUtils.ts` (Lines 22-24)
 **Category**: Performance
 **Severity**: 🔵 Info
 
 **Issue**: SVG icons embedded as base64, could be optimized or cached.
 
+**Suggestion**: Consider using SVG files or optimizing base64 strings.
+
 ---
 
-### 38. **Missing Service Worker Configuration**
+### 28. **Missing Service Worker Configuration**
 **File**: `vite.config.ts` (Line 8-50)
 **Category**: Performance
 **Severity**: 🔵 Info
 
-**Issue**: PWA plugin configured but may need additional service worker strategies.
+**Issue**: PWA plugin configured but may need additional service worker strategies for offline support.
 
 ---
 
-### 39. **Missing Analytics Integration**
+### 29. **Missing Analytics Integration**
 **Files**: Multiple
 **Category**: Monitoring
 **Severity**: 🔵 Info
 
-**Suggestion**: Add error tracking (Sentry, etc.) and analytics.
-
----
-
-### 40. **Missing Unit Tests**
-**Files**: All utility files
-**Category**: Testing
-**Severity**: 🔵 Info
-
-**Issue**: No test files found for utility functions.
-
----
-
-### 41. **Missing Integration Tests**
-**Files**: Amplify operations
-**Category**: Testing
-**Severity**: 🔵 Info
-
-**Issue**: No tests for Amplify data operations.
-
----
-
-### 42. **Missing E2E Test Coverage**
-**File**: `tests/smoke.spec.ts`
-**Category**: Testing
-**Severity**: 🔵 Info
-
-**Issue**: Only smoke test exists, need comprehensive E2E coverage.
-
----
-
-### 43. **Missing Documentation Comments**
-**Files**: Multiple component files
-**Category**: Code Quality
-**Severity**: 🔵 Info
-
-**Suggestion**: Add JSDoc comments for complex functions and components.
+**Suggestion**: Consider adding error tracking (Sentry) and analytics for production monitoring.
 
 ---
 
 ## Files Reviewed
 
-1. `amplify/backend.ts`
-2. `amplify/data/resource.ts`
-3. `amplify/auth/resource.ts`
-4. `src/App.tsx`
-5. `src/main.tsx`
-6. `src/types/index.ts`
-7. `src/components/HomePage.tsx`
-8. `src/components/RideMapView.tsx`
-9. `src/components/MyAccountView.tsx`
-10. `src/components/TermsPage.tsx`
-11. `src/components/ErrorBoundary.tsx`
-12. `src/components/LoadingFallback.tsx`
-13. `src/hooks/useTermsGate.ts`
-14. `src/hooks/useGeolocation.ts`
-15. `src/utils/activeRideStorage.ts`
-16. `src/utils/errorHandler.ts`
-17. `src/utils/geoUtils.ts`
-18. `src/utils/mapUtils.ts`
-19. `src/utils/toast.ts`
-20. `src/utils/validation.ts`
-21. `vite.config.ts`
-22. `tsconfig.json`
-23. `package.json`
-24. `index.html`
+### Source Files
+- `src/App.tsx`
+- `src/main.tsx`
+- `src/components/HomePage.tsx`
+- `src/components/RideMapView.tsx`
+- `src/components/MyAccountView.tsx`
+- `src/components/TermsPage.tsx`
+- `src/components/ErrorBoundary.tsx`
+- `src/components/LoadingFallback.tsx`
+- `src/hooks/useTermsGate.ts`
+- `src/hooks/useGeolocation.ts`
+- `src/utils/mapUtils.ts`
+- `src/utils/geoUtils.ts`
+- `src/utils/errorHandler.ts`
+- `src/utils/toast.ts`
+- `src/utils/activeRideStorage.ts`
+- `src/utils/validation.ts`
+- `src/types/index.ts`
+
+### Configuration Files
+- `package.json`
+- `tsconfig.json`
+- `tsconfig.node.json`
+- `vite.config.ts`
+- `amplify/data/resource.ts`
+- `amplify/auth/resource.ts`
+- `amplify/backend.ts`
 
 ---
 
 ## Recommended Next Steps
 
-### Priority 1 (Before Deployment) 🔴
-1. **Fix all 8 critical errors** - These will cause runtime crashes or security issues
-2. **Add error handling to all Amplify operations** - Check for `errors` in responses
-3. **Fix useEffect dependency issues** - Prevent stale closures
-4. **Add secondary index for userId query** - Required for performance
-5. **Review and restrict authorization rules** - Security critical
+### Immediate Actions (Before Deployment)
+1. ✅ Fix missing dependency in `App.tsx` useEffect
+2. ✅ Add loading state to `TermsPage.tsx`
+3. ✅ Replace `alert()` with toast in `HomePage.tsx`
+4. ✅ Update `eslint-plugin-react-hooks` to `^6.0.0`
+5. ✅ Add `engines` field to `package.json`
 
-### Priority 2 (Before Production) 🟠
-1. **Replace all console.log/error with proper logging**
-2. **Add loading states for all async operations**
-3. **Fix type safety issues** (remove `never[]` types)
-4. **Add proper error boundaries for map component**
-5. **Implement user profile creation logic**
+### High Priority (Before Next Release)
+1. Add proper error handling and cleanup in useEffect hooks
+2. Implement proper logging service or conditional logging
+3. Add accessibility attributes to interactive elements
+4. Complete ride fetching implementation in `RideMapView.tsx`
 
-### Priority 3 (Enhancements) 🟡
-1. **Add React.memo and useCallback optimizations**
-2. **Implement real-time subscriptions for ride updates**
-3. **Add code splitting for better performance**
-4. **Create comprehensive test suite**
-5. **Add analytics and error tracking**
+### Medium Priority (Next Sprint)
+1. Add React.memo and useCallback optimizations
+2. Implement optimistic updates for better UX
+3. Add code splitting with React.lazy
+4. Create ESLint flat config for React 19.2
 
-### Priority 4 (Nice to Have) 🔵
-1. **Optimize bundle size further**
-2. **Add comprehensive documentation**
-3. **Implement advanced PWA features**
-4. **Add performance monitoring**
+### Low Priority (Backlog)
+1. Consider React 19.2 features (Activity, useEffectEvent)
+2. Add real-time subscriptions for ride updates
+3. Implement comprehensive error recovery
+4. Add analytics and monitoring
 
 ---
 
-## Additional Notes
+## Version Compatibility Check
 
-### Amplify Gen 2 Configuration
-- ✅ Backend configuration looks correct
-- ✅ Schema definitions are properly structured
-- ⚠️ Authorization rules need review for security
-- ⚠️ Missing indexes for common queries
+### ✅ Compatible Versions
+- React: `^19.2.3` ✅
+- React DOM: `^19.2.3` ✅
+- Vite: `^7.3.0` ✅
+- TypeScript: `^5.5.3` ✅
+- @types/react: `^19.0.0` ✅
+- @types/react-dom: `^19.0.0` ✅
+- @vitejs/plugin-react: `^5.1.2` ✅
 
-### React Patterns
-- ✅ Good use of TypeScript types
-- ✅ Error boundary implemented
-- ⚠️ Missing memoization optimizations
-- ⚠️ Some useEffect dependency issues
+### ⚠️ Needs Update
+- eslint-plugin-react-hooks: `^4.6.2` → Should be `^6.0.0`
 
-### TypeScript Configuration
-- ✅ Strict mode enabled
-- ✅ Good type safety overall
-- ⚠️ Some type assertions without validation
-- ⚠️ Missing return type annotations on some functions
-
-### Security Considerations
-- ⚠️ Guest access may be too permissive
-- ⚠️ Missing input validation in some areas
-- ✅ No hardcoded secrets found
-- ⚠️ Should add rate limiting awareness
+### ❌ Missing
+- Node.js version requirement in `engines` field
 
 ---
 
-**Review Date**: 2026-01-02
-**Reviewer**: AI Code Review System
-**Project**: RideShare.Click - AWS Amplify Gen 2 + React TypeScript
+## TypeScript Compilation Status
 
+✅ **TypeScript compilation passes** - No type errors found.
+
+---
+
+## Build Status
+
+✅ **Vite configuration is ESM-only** - Compatible with Vite 7.3.0
+✅ **package.json has "type": "module"** - Required for Vite 7
+✅ **JSX transform is modern** - Using `react-jsx` transform
+✅ **No forwardRef usage** - Compatible with React 19.2 ref-as-prop pattern
+
+---
+
+## Summary
+
+The codebase is generally well-structured and follows good practices. The main issues are:
+1. Missing dependency arrays in useEffect hooks
+2. Missing loading states for async operations
+3. Outdated ESLint plugin version
+4. Missing Node.js version requirement
+
+All critical issues should be fixed before deployment. The codebase is compatible with React 19.2 and Vite 7.3.0, with minor configuration updates needed.

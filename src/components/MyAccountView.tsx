@@ -1,7 +1,7 @@
 import { Authenticator, useAuthenticator } from '@aws-amplify/ui-react';
 import { signOut } from 'aws-amplify/auth';
 import { ArrowLeft, LogOut, User } from 'lucide-react';
-import { useEffect } from 'react';
+import { useEffect, useEffectEvent } from 'react';
 import type { SharedProps } from '../types';
 import { toast } from '../utils/toast';
 import '@aws-amplify/ui-react/styles.css';
@@ -18,12 +18,17 @@ function AuthenticatedContent({
 }: MyAccountViewProps) {
   const { user: authUser } = useAuthenticator();
 
+  // Use useEffectEvent to avoid dependency issues (React 19.2)
+  const handleAuthChange = useEffectEvent(() => {
+    onAuthChange();
+  });
+
   // Trigger auth check when user signs in via Authenticator
   useEffect(() => {
     if (authUser && !user) {
-      onAuthChange();
+      handleAuthChange();
     }
-  }, [authUser, user, onAuthChange]);
+  }, [authUser, user]); // onAuthChange not needed in deps due to useEffectEvent
 
   const handleSignOut = async () => {
     try {
@@ -32,7 +37,9 @@ function AuthenticatedContent({
       onAuthChange();
       setCurrentView('home');
     } catch (error) {
-      console.error('Error signing out:', error);
+      if (import.meta.env.DEV) {
+        console.error('Error signing out:', error);
+      }
       toast.error('Failed to sign out');
     }
   };
@@ -69,6 +76,7 @@ function AuthenticatedContent({
         <button
           onClick={handleSignOut}
           className="w-full flex items-center justify-center gap-2 bg-red-600 text-white py-3 px-6 rounded-lg hover:bg-red-700 transition-colors"
+          aria-label="Sign out of your account"
         >
           <LogOut className="w-5 h-5" />
           Sign Out

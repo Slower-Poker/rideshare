@@ -11,6 +11,8 @@ import {
 
 export function RideMapView({ setCurrentView }: SharedProps) {
   // TODO: Fetch actual rides from database
+  // This is a work-in-progress feature. Ride fetching will be implemented
+  // using Amplify Data subscriptions for real-time updates.
   const rides: never[] = [];
   const loading = false;
 
@@ -52,7 +54,8 @@ export function RideMapView({ setCurrentView }: SharedProps) {
             url={TILE_LAYER_URL}
           />
           
-          {/* TODO: Add ride markers when data is available */}
+          {/* TODO: Add ride markers when data is available
+              Markers will be rendered from fetched ride data */}
           {rides.map(() => (
             <Marker
               key={`ride-marker-placeholder`}

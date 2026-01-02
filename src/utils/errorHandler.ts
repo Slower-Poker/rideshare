@@ -16,7 +16,10 @@ export interface AppError {
  * Never expose sensitive error details to users
  */
 export function handleError(error: unknown, context?: string): void {
-  console.error(`Error in ${context || 'app'}:`, error);
+  // Always log errors in error handler (critical for debugging)
+  if (import.meta.env.DEV || import.meta.env.PROD) {
+    console.error(`Error in ${context || 'app'}:`, error);
+  }
   
   let userMessage = 'An unexpected error occurred. Please try again.';
   
@@ -39,7 +42,10 @@ export function handleError(error: unknown, context?: string): void {
  * Handle Amplify API errors
  */
 export function handleApiError(error: unknown, operation: string): void {
-  console.error(`API error during ${operation}:`, error);
+  // Always log API errors (critical for debugging)
+  if (import.meta.env.DEV || import.meta.env.PROD) {
+    console.error(`API error during ${operation}:`, error);
+  }
   
   // Generic message for users - detailed error logged
   toast.error(`Failed to ${operation}. Please try again.`);

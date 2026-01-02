@@ -38,7 +38,7 @@
     "aws-cdk-lib": "^2.233.0",
     "constructs": "^10.4.4",
     "eslint": "^8.57.0",
-    "eslint-plugin-react-hooks": "^4.6.2",
+    "eslint-plugin-react-hooks": "^6.0.0",
     "eslint-plugin-react-refresh": "^0.4.7",
     "node-localstorage": "^3.0.5",
     "postcss": "^8.4.38",
@@ -46,5 +46,8 @@
     "typescript": "^5.5.3",
     "vite": "^7.3.0",
     "vite-plugin-pwa": "^0.20.0"
+  },
+  "engines": {
+    "node": ">=20.19.0"
   }
 }
