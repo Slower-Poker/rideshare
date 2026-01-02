@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Search, MapPin, X, Loader2 } from 'lucide-react';
+import { ArrowLeft, Search, MapPin, X, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { generateClient } from 'aws-amplify/data';
 import type { SharedProps, Location } from '../types';
+import type { Schema } from '../../amplify/data/resource';
 import { loadMapLibre, isMapLibreLoaded, getMapLibreInstance } from '../utils/maplibreLoader';
 import {
   DEFAULT_CENTER,
@@ -13,6 +15,8 @@ import {
   calculateBounds,
 } from '../utils/maplibreUtils';
 import { toast } from '../utils/toast';
+
+const client = generateClient<Schema>();
 
 // Nominatim API endpoint for OSM geocoding
 const NOMINATIM_API = 'https://nominatim.openstreetmap.org/search';
@@ -28,15 +32,26 @@ interface GeocodeResult {
 type MapLibreMap = any; // MapLibre Map instance
 type MapLibreMarker = any; // MapLibre Marker instance
 
-export function BookaRide({ setCurrentView }: SharedProps) {
-  const [pickupLocation, setPickupLocation] = useState<Location | null>(null);
-  const [dropoffLocation, setDropoffLocation] = useState<Location | null>(null);
-  const [pickupSearch, setPickupSearch] = useState('');
-  const [dropoffSearch, setDropoffSearch] = useState('');
-  const [pickupResults, setPickupResults] = useState<GeocodeResult[]>([]);
-  const [dropoffResults, setDropoffResults] = useState<GeocodeResult[]>([]);
-  const [searchingPickup, setSearchingPickup] = useState(false);
-  const [searchingDropoff, setSearchingDropoff] = useState(false);
+export function OfferaRide({ setCurrentView, user }: SharedProps) {
+  const [originLocation, setOriginLocation] = useState<Location | null>(null);
+  const [destinationLocation, setDestinationLocation] = useState<Location | null>(null);
+  const [originSearch, setOriginSearch] = useState('');
+  const [destinationSearch, setDestinationSearch] = useState('');
+  const [originResults, setOriginResults] = useState<GeocodeResult[]>([]);
+  const [destinationResults, setDestinationResults] = useState<GeocodeResult[]>([]);
+  const [searchingOrigin, setSearchingOrigin] = useState(false);
+  const [searchingDestination, setSearchingDestination] = useState(false);
+  
+  // Form fields
+  const [departureTime, setDepartureTime] = useState('');
+  const [availableSeats, setAvailableSeats] = useState<number>(1);
+  const [vehicleInfo, setVehicleInfo] = useState('');
+  const [notes, setNotes] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Verification state
+  const [isVerified, setIsVerified] = useState(false);
+  const [checkingVerification, setCheckingVerification] = useState(true);
   
   // MapLibre loading states
   const [isScriptLoading, setIsScriptLoading] = useState(false);
@@ -54,19 +69,58 @@ export function BookaRide({ setCurrentView }: SharedProps) {
   const maxRetries = 20;
   
   // Use refs to track current locations for map click handler
-  const pickupLocationRef = useRef<Location | null>(null);
-  const dropoffLocationRef = useRef<Location | null>(null);
+  const originLocationRef = useRef<Location | null>(null);
+  const destinationLocationRef = useRef<Location | null>(null);
   const isMountedRef = useRef(true);
   const fetchAbortControllerRef = useRef<AbortController | null>(null);
+
+  // Check verification status
+  useEffect(() => {
+    if (!user) {
+      setCheckingVerification(false);
+      setIsVerified(false);
+      return;
+    }
+
+    const checkVerification = async () => {
+      try {
+        const { data: profiles, errors } = await client.models.UserProfile.list({
+          filter: { userId: { eq: user.userId } },
+          limit: 1,
+        });
+
+        if (errors) {
+          if (import.meta.env.DEV) {
+            console.error('Error fetching user profile:', errors);
+          }
+          setIsVerified(false);
+          setCheckingVerification(false);
+          return;
+        }
+
+        const profile = profiles?.[0];
+        setIsVerified(profile?.verifiedRideHost === true);
+        setCheckingVerification(false);
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          console.error('Error checking verification:', error);
+        }
+        setIsVerified(false);
+        setCheckingVerification(false);
+      }
+    };
+
+    checkVerification();
+  }, [user]);
   
   // Keep refs in sync with state
   useEffect(() => {
-    pickupLocationRef.current = pickupLocation;
-  }, [pickupLocation]);
+    originLocationRef.current = originLocation;
+  }, [originLocation]);
   
   useEffect(() => {
-    dropoffLocationRef.current = dropoffLocation;
-  }, [dropoffLocation]);
+    destinationLocationRef.current = destinationLocation;
+  }, [destinationLocation]);
 
   // Container ref setter
   const setContainerRef = useCallback((node: HTMLDivElement | null) => {
@@ -156,10 +210,10 @@ export function BookaRide({ setCurrentView }: SharedProps) {
     }
   };
 
-  // Handle pickup search
-  const handlePickupSearch = async (query: string) => {
-    setPickupSearch(query);
-    setSearchingPickup(true);
+  // Handle origin search
+  const handleOriginSearch = async (query: string) => {
+    setOriginSearch(query);
+    setSearchingOrigin(true);
 
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
@@ -168,18 +222,18 @@ export function BookaRide({ setCurrentView }: SharedProps) {
     searchTimeoutRef.current = setTimeout(async () => {
       if (query.trim()) {
         const results = await geocodeAddress(query);
-        setPickupResults(results);
+        setOriginResults(results);
       } else {
-        setPickupResults([]);
+        setOriginResults([]);
       }
-      setSearchingPickup(false);
+      setSearchingOrigin(false);
     }, 500);
   };
 
-  // Handle dropoff search
-  const handleDropoffSearch = async (query: string) => {
-    setDropoffSearch(query);
-    setSearchingDropoff(true);
+  // Handle destination search
+  const handleDestinationSearch = async (query: string) => {
+    setDestinationSearch(query);
+    setSearchingDestination(true);
 
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
@@ -188,16 +242,16 @@ export function BookaRide({ setCurrentView }: SharedProps) {
     searchTimeoutRef.current = setTimeout(async () => {
       if (query.trim()) {
         const results = await geocodeAddress(query);
-        setDropoffResults(results);
+        setDestinationResults(results);
       } else {
-        setDropoffResults([]);
+        setDestinationResults([]);
       }
-      setSearchingDropoff(false);
+      setSearchingDestination(false);
     }, 500);
   };
 
-  // Select pickup location
-  const selectPickup = (result: GeocodeResult) => {
+  // Select origin location
+  const selectOrigin = (result: GeocodeResult) => {
     const lat = parseFloat(result.lat);
     const lon = parseFloat(result.lon);
     
@@ -211,13 +265,13 @@ export function BookaRide({ setCurrentView }: SharedProps) {
       longitude: lon,
       address: result.display_name,
     };
-    setPickupLocation(location);
-    setPickupSearch(result.display_name);
-    setPickupResults([]);
+    setOriginLocation(location);
+    setOriginSearch(result.display_name);
+    setOriginResults([]);
   };
 
-  // Select dropoff location
-  const selectDropoff = (result: GeocodeResult) => {
+  // Select destination location
+  const selectDestination = (result: GeocodeResult) => {
     const lat = parseFloat(result.lat);
     const lon = parseFloat(result.lon);
     
@@ -231,9 +285,9 @@ export function BookaRide({ setCurrentView }: SharedProps) {
       longitude: lon,
       address: result.display_name,
     };
-    setDropoffLocation(location);
-    setDropoffSearch(result.display_name);
-    setDropoffResults([]);
+    setDestinationLocation(location);
+    setDestinationSearch(result.display_name);
+    setDestinationResults([]);
   };
 
   // Handle map click for location selection
@@ -300,31 +354,31 @@ export function BookaRide({ setCurrentView }: SharedProps) {
           return;
         }
         
-        const currentPickup = pickupLocationRef.current;
-        const currentDropoff = dropoffLocationRef.current;
+        const currentOrigin = originLocationRef.current;
+        const currentDestination = destinationLocationRef.current;
         
-        if (!currentPickup) {
-          setPickupLocation(locationWithAddress);
-          setPickupSearch(locationWithAddress.address || 'Selected location');
-        } else if (!currentDropoff) {
-          setDropoffLocation(locationWithAddress);
-          setDropoffSearch(locationWithAddress.address || 'Selected location');
+        if (!currentOrigin) {
+          setOriginLocation(locationWithAddress);
+          setOriginSearch(locationWithAddress.address || 'Selected location');
+        } else if (!currentDestination) {
+          setDestinationLocation(locationWithAddress);
+          setDestinationSearch(locationWithAddress.address || 'Selected location');
         } else {
-          const distToPickup = Math.sqrt(
-            Math.pow(locationWithAddress.latitude - currentPickup.latitude, 2) +
-            Math.pow(locationWithAddress.longitude - currentPickup.longitude, 2)
+          const distToOrigin = Math.sqrt(
+            Math.pow(locationWithAddress.latitude - currentOrigin.latitude, 2) +
+            Math.pow(locationWithAddress.longitude - currentOrigin.longitude, 2)
           );
-          const distToDropoff = Math.sqrt(
-            Math.pow(locationWithAddress.latitude - currentDropoff.latitude, 2) +
-            Math.pow(locationWithAddress.longitude - currentDropoff.longitude, 2)
+          const distToDestination = Math.sqrt(
+            Math.pow(locationWithAddress.latitude - currentDestination.latitude, 2) +
+            Math.pow(locationWithAddress.longitude - currentDestination.longitude, 2)
           );
           
-          if (distToPickup < distToDropoff) {
-            setPickupLocation(locationWithAddress);
-            setPickupSearch(locationWithAddress.address || 'Selected location');
+          if (distToOrigin < distToDestination) {
+            setOriginLocation(locationWithAddress);
+            setOriginSearch(locationWithAddress.address || 'Selected location');
           } else {
-            setDropoffLocation(locationWithAddress);
-            setDropoffSearch(locationWithAddress.address || 'Selected location');
+            setDestinationLocation(locationWithAddress);
+            setDestinationSearch(locationWithAddress.address || 'Selected location');
           }
         }
       })
@@ -350,15 +404,15 @@ export function BookaRide({ setCurrentView }: SharedProps) {
           return;
         }
         
-        const currentPickup = pickupLocationRef.current;
-        const currentDropoff = dropoffLocationRef.current;
+        const currentOrigin = originLocationRef.current;
+        const currentDestination = destinationLocationRef.current;
         
-        if (!currentPickup) {
-          setPickupLocation(locationWithoutAddress);
-          setPickupSearch('Selected location');
-        } else if (!currentDropoff) {
-          setDropoffLocation(locationWithoutAddress);
-          setDropoffSearch('Selected location');
+        if (!currentOrigin) {
+          setOriginLocation(locationWithoutAddress);
+          setOriginSearch('Selected location');
+        } else if (!currentDestination) {
+          setDestinationLocation(locationWithoutAddress);
+          setDestinationSearch('Selected location');
         }
       });
   }, []);
@@ -546,7 +600,6 @@ export function BookaRide({ setCurrentView }: SharedProps) {
 
   // Load MapLibre script when component is visible
   useEffect(() => {
-    // Always load when component mounts (currentView check removed - component only renders when view is active)
     if (isScriptLoading || isMapLibreLoaded()) {
       return;
     }
@@ -621,10 +674,10 @@ export function BookaRide({ setCurrentView }: SharedProps) {
         return;
       }
 
-      // Add pickup marker (draggable)
-      if (pickupLocation) {
+      // Add origin marker
+      if (originLocation) {
         const el = document.createElement('div');
-        el.className = 'pickup-marker';
+        el.className = 'origin-marker';
         el.innerHTML = `
           <div style="
             width: 32px;
@@ -639,128 +692,28 @@ export function BookaRide({ setCurrentView }: SharedProps) {
             color: white;
             font-weight: bold;
             font-size: 18px;
-            cursor: move;
-          ">P</div>
+          ">O</div>
         `;
         
-        const marker = new maplibregl.Marker({ 
-          element: el,
-          draggable: true,
-        })
-          .setLngLat(locationToCoordinates(pickupLocation))
+        const marker = new maplibregl.Marker({ element: el })
+          .setLngLat(locationToCoordinates(originLocation))
           .setPopup(
             new maplibregl.Popup({ offset: 25 })
               .setHTML(`
                 <div style="text-align: center;">
-                  <p style="font-weight: 600; color: #10b981; margin: 0;">Pickup</p>
-                  ${pickupLocation.address ? `<p style="font-size: 12px; color: #666; margin: 4px 0 0 0;">${pickupLocation.address}</p>` : ''}
-                  <p style="font-size: 10px; color: #999; margin: 4px 0 0 0;">Drag to adjust</p>
+                  <p style="font-weight: 600; color: #10b981; margin: 0;">Origin</p>
+                  ${originLocation.address ? `<p style="font-size: 12px; color: #666; margin: 4px 0 0 0;">${originLocation.address}</p>` : ''}
                 </div>
               `)
           )
           .addTo(map);
-        
-        // Handle drag end to update location
-        marker.on('dragend', () => {
-          if (!isMountedRef.current) {
-            return;
-          }
-          
-          const lngLat = marker.getLngLat();
-          const newLocation: Location = {
-            latitude: lngLat.lat,
-            longitude: lngLat.lng,
-            address: pickupLocation.address || 'Selected location', // Keep existing address temporarily
-          };
-          
-          // Validate location is in Manitoba
-          if (!isInManitobaBounds(newLocation.latitude, newLocation.longitude)) {
-            toast.error('Location must be within Manitoba, Canada');
-            // Reset marker to original position
-            marker.setLngLat(locationToCoordinates(pickupLocation));
-            return;
-          }
-          
-          // Reverse geocode the new location
-          const abortController = new AbortController();
-          fetchAbortControllerRef.current = abortController;
-          
-          fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${newLocation.latitude}&lon=${newLocation.longitude}&countrycodes=ca`,
-            {
-              headers: {
-                'User-Agent': 'RideShare.Click/1.0',
-              },
-              signal: abortController.signal,
-            }
-          )
-            .then((res) => {
-              if (!isMountedRef.current || abortController.signal.aborted) {
-                return null;
-              }
-              if (!res.ok) {
-                throw new Error('Reverse geocoding failed');
-              }
-              return res.json();
-            })
-            .then((data) => {
-              if (!isMountedRef.current || abortController.signal.aborted || !data) {
-                return;
-              }
-              
-              const resultLat = parseFloat(data.lat || newLocation.latitude.toString());
-              const resultLon = parseFloat(data.lon || newLocation.longitude.toString());
-              
-              if (!isInManitobaBounds(resultLat, resultLon)) {
-                toast.error('Selected location is outside Manitoba, Canada');
-                marker.setLngLat(locationToCoordinates(pickupLocation));
-                return;
-              }
-              
-              const locationWithAddress: Location = {
-                latitude: resultLat,
-                longitude: resultLon,
-                address: data.display_name || 'Selected location',
-              };
-              
-              if (!isMountedRef.current) {
-                return;
-              }
-              
-              setPickupLocation(locationWithAddress);
-              setPickupSearch(locationWithAddress.address || 'Selected location');
-              
-              // Update popup with new address
-              marker.getPopup()?.setHTML(`
-                <div style="text-align: center;">
-                  <p style="font-weight: 600; color: #10b981; margin: 0;">Pickup</p>
-                  ${locationWithAddress.address ? `<p style="font-size: 12px; color: #666; margin: 4px 0 0 0;">${locationWithAddress.address}</p>` : ''}
-                  <p style="font-size: 10px; color: #999; margin: 4px 0 0 0;">Drag to adjust</p>
-                </div>
-              `);
-            })
-            .catch((error) => {
-              if (error.name === 'AbortError') {
-                return;
-              }
-              
-              if (!isMountedRef.current) {
-                return;
-              }
-              
-              // If reverse geocoding fails, still update location but keep "Selected location" as address
-              setPickupLocation(newLocation);
-              setPickupSearch('Selected location');
-            });
-        });
-        
         markersRef.current.push(marker);
       }
 
-      // Add dropoff marker (draggable)
-      if (dropoffLocation) {
+      // Add destination marker
+      if (destinationLocation) {
         const el = document.createElement('div');
-        el.className = 'dropoff-marker';
+        el.className = 'destination-marker';
         el.innerHTML = `
           <div style="
             width: 32px;
@@ -775,121 +728,21 @@ export function BookaRide({ setCurrentView }: SharedProps) {
             color: white;
             font-weight: bold;
             font-size: 18px;
-            cursor: move;
           ">D</div>
         `;
         
-        const marker = new maplibregl.Marker({ 
-          element: el,
-          draggable: true,
-        })
-          .setLngLat(locationToCoordinates(dropoffLocation))
+        const marker = new maplibregl.Marker({ element: el })
+          .setLngLat(locationToCoordinates(destinationLocation))
           .setPopup(
             new maplibregl.Popup({ offset: 25 })
               .setHTML(`
                 <div style="text-align: center;">
-                  <p style="font-weight: 600; color: #ef4444; margin: 0;">Dropoff</p>
-                  ${dropoffLocation.address ? `<p style="font-size: 12px; color: #666; margin: 4px 0 0 0;">${dropoffLocation.address}</p>` : ''}
-                  <p style="font-size: 10px; color: #999; margin: 4px 0 0 0;">Drag to adjust</p>
+                  <p style="font-weight: 600; color: #ef4444; margin: 0;">Destination</p>
+                  ${destinationLocation.address ? `<p style="font-size: 12px; color: #666; margin: 4px 0 0 0;">${destinationLocation.address}</p>` : ''}
                 </div>
               `)
           )
           .addTo(map);
-        
-        // Handle drag end to update location
-        marker.on('dragend', () => {
-          if (!isMountedRef.current) {
-            return;
-          }
-          
-          const lngLat = marker.getLngLat();
-          const newLocation: Location = {
-            latitude: lngLat.lat,
-            longitude: lngLat.lng,
-            address: dropoffLocation.address || 'Selected location', // Keep existing address temporarily
-          };
-          
-          // Validate location is in Manitoba
-          if (!isInManitobaBounds(newLocation.latitude, newLocation.longitude)) {
-            toast.error('Location must be within Manitoba, Canada');
-            // Reset marker to original position
-            marker.setLngLat(locationToCoordinates(dropoffLocation));
-            return;
-          }
-          
-          // Reverse geocode the new location
-          const abortController = new AbortController();
-          fetchAbortControllerRef.current = abortController;
-          
-          fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${newLocation.latitude}&lon=${newLocation.longitude}&countrycodes=ca`,
-            {
-              headers: {
-                'User-Agent': 'RideShare.Click/1.0',
-              },
-              signal: abortController.signal,
-            }
-          )
-            .then((res) => {
-              if (!isMountedRef.current || abortController.signal.aborted) {
-                return null;
-              }
-              if (!res.ok) {
-                throw new Error('Reverse geocoding failed');
-              }
-              return res.json();
-            })
-            .then((data) => {
-              if (!isMountedRef.current || abortController.signal.aborted || !data) {
-                return;
-              }
-              
-              const resultLat = parseFloat(data.lat || newLocation.latitude.toString());
-              const resultLon = parseFloat(data.lon || newLocation.longitude.toString());
-              
-              if (!isInManitobaBounds(resultLat, resultLon)) {
-                toast.error('Selected location is outside Manitoba, Canada');
-                marker.setLngLat(locationToCoordinates(dropoffLocation));
-                return;
-              }
-              
-              const locationWithAddress: Location = {
-                latitude: resultLat,
-                longitude: resultLon,
-                address: data.display_name || 'Selected location',
-              };
-              
-              if (!isMountedRef.current) {
-                return;
-              }
-              
-              setDropoffLocation(locationWithAddress);
-              setDropoffSearch(locationWithAddress.address || 'Selected location');
-              
-              // Update popup with new address
-              marker.getPopup()?.setHTML(`
-                <div style="text-align: center;">
-                  <p style="font-weight: 600; color: #ef4444; margin: 0;">Dropoff</p>
-                  ${locationWithAddress.address ? `<p style="font-size: 12px; color: #666; margin: 4px 0 0 0;">${locationWithAddress.address}</p>` : ''}
-                  <p style="font-size: 10px; color: #999; margin: 4px 0 0 0;">Drag to adjust</p>
-                </div>
-              `);
-            })
-            .catch((error) => {
-              if (error.name === 'AbortError') {
-                return;
-              }
-              
-              if (!isMountedRef.current) {
-                return;
-              }
-              
-              // If reverse geocoding fails, still update location but keep "Selected location" as address
-              setDropoffLocation(newLocation);
-              setDropoffSearch('Selected location');
-            });
-        });
-        
         markersRef.current.push(marker);
       }
 
@@ -924,8 +777,8 @@ export function BookaRide({ setCurrentView }: SharedProps) {
 
       // Fit bounds if we have locations
       const allLocations = [
-        pickupLocation,
-        dropoffLocation,
+        originLocation,
+        destinationLocation,
         userLocation,
       ].filter((loc): loc is Location => loc !== null);
 
@@ -951,11 +804,11 @@ export function BookaRide({ setCurrentView }: SharedProps) {
               console.debug('Error fitting map bounds:', error);
             }
           }
-        } else if (pickupLocation) {
-          const [lng, lat] = locationToCoordinates(pickupLocation);
+        } else if (originLocation) {
+          const [lng, lat] = locationToCoordinates(originLocation);
           map.setCenter([lng, lat]);
-        } else if (dropoffLocation) {
-          const [lng, lat] = locationToCoordinates(dropoffLocation);
+        } else if (destinationLocation) {
+          const [lng, lat] = locationToCoordinates(destinationLocation);
           map.setCenter([lng, lat]);
         }
       }
@@ -964,38 +817,161 @@ export function BookaRide({ setCurrentView }: SharedProps) {
     return () => {
       clearTimeout(updateTimeout);
     };
-  }, [pickupLocation, dropoffLocation, userLocation, isMapLoaded]);
+  }, [originLocation, destinationLocation, userLocation, isMapLoaded]);
 
   // Clear locations
-  const clearPickup = () => {
-    setPickupLocation(null);
-    setPickupSearch('');
-    setPickupResults([]);
+  const clearOrigin = () => {
+    setOriginLocation(null);
+    setOriginSearch('');
+    setOriginResults([]);
   };
 
-  const clearDropoff = () => {
-    setDropoffLocation(null);
-    setDropoffSearch('');
-    setDropoffResults([]);
+  const clearDestination = () => {
+    setDestinationLocation(null);
+    setDestinationSearch('');
+    setDestinationResults([]);
   };
 
-  // Handle Next button click
-  const handleNext = () => {
-    if (!pickupLocation || !dropoffLocation) {
-      toast.error('Please select both pickup and dropoff locations');
+  // Handle form submission
+  const handleSubmit = async () => {
+    if (!isVerified) {
+      toast.error('You must be a verified ride host to offer rides');
       return;
     }
 
-    // Store booking data in sessionStorage
-    const bookingData = {
-      pickup: pickupLocation,
-      dropoff: dropoffLocation,
-    };
-    sessionStorage.setItem('rideshare_booking_data', JSON.stringify(bookingData));
-    
-    // Navigate to confirmation page
-    setCurrentView('bookRideConfirm');
+    if (!originLocation || !destinationLocation) {
+      toast.error('Please select both origin and destination locations');
+      return;
+    }
+
+    if (!departureTime) {
+      toast.error('Please select a departure time');
+      return;
+    }
+
+    if (availableSeats < 1) {
+      toast.error('Please specify at least 1 available seat');
+      return;
+    }
+
+    if (!user) {
+      toast.error('You must be signed in to offer rides');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      // Get user profile to get the ID
+      const { data: profiles, errors: profileErrors } = await client.models.UserProfile.list({
+        filter: { userId: { eq: user.userId } },
+        limit: 1,
+      });
+
+      if (profileErrors || !profiles || profiles.length === 0) {
+        toast.error('Error: User profile not found');
+        setIsSubmitting(false);
+        return;
+      }
+
+      const profile = profiles[0];
+
+      // Create ride offer
+      const departureDateTime = new Date(departureTime).toISOString();
+      
+      const { data: rideOffer, errors } = await client.models.RideOffer.create({
+        hostId: profile.id,
+        originLatitude: originLocation.latitude,
+        originLongitude: originLocation.longitude,
+        originAddress: originLocation.address || '',
+        destinationLatitude: destinationLocation.latitude,
+        destinationLongitude: destinationLocation.longitude,
+        destinationAddress: destinationLocation.address || '',
+        departureTime: departureDateTime,
+        availableSeats: availableSeats,
+        seatsBooked: 0,
+        status: 'available',
+        vehicleInfo: vehicleInfo || undefined,
+        notes: notes || undefined,
+      });
+
+      if (errors) {
+        if (import.meta.env.DEV) {
+          console.error('Error creating ride offer:', errors);
+        }
+        toast.error('Failed to create ride offer. Please try again.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (rideOffer) {
+        toast.success('Ride offer created successfully!');
+        setCurrentView('home');
+      }
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error('Error creating ride offer:', error);
+      }
+      toast.error('Failed to create ride offer. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
+
+  // Show verification warning if not verified
+  if (checkingVerification) {
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-primary-600 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!isVerified) {
+    return (
+      <div className="h-screen flex flex-col">
+        <header className="bg-white shadow-sm z-10">
+          <div className="max-w-7xl mx-auto px-4 py-4 flex items-center gap-4">
+            <button
+              onClick={() => setCurrentView('home')}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              aria-label="Back to home"
+            >
+              <ArrowLeft className="w-6 h-6" />
+            </button>
+            <h1 className="text-xl font-bold text-gray-900">Offer a Ride</h1>
+          </div>
+        </header>
+
+        <main className="flex-1 flex items-center justify-center p-4">
+          <div className="max-w-md w-full bg-white rounded-lg shadow-md p-8 text-center">
+            <AlertCircle className="w-16 h-16 text-amber-500 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">
+              Verification Required
+            </h2>
+            <p className="text-gray-600 mb-6">
+              To offer rides on RideShare.Click, you must be verified as a ride host by RideShare.Click.
+            </p>
+            <p className="text-sm text-gray-500 mb-6">
+              Please contact RideShare.Click to get verified, or check your account profile for verification status.
+            </p>
+            <button
+              onClick={() => setCurrentView('account')}
+              className="w-full bg-primary-600 text-white py-3 px-6 rounded-lg hover:bg-primary-700 transition-colors"
+            >
+              View My Account
+            </button>
+            <button
+              onClick={() => setCurrentView('home')}
+              className="w-full mt-3 bg-gray-200 text-gray-900 py-3 px-6 rounded-lg hover:bg-gray-300 transition-colors"
+            >
+              Back to Home
+            </button>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen flex flex-col">
@@ -1009,34 +985,38 @@ export function BookaRide({ setCurrentView }: SharedProps) {
           >
             <ArrowLeft className="w-6 h-6" />
           </button>
-          <h1 className="text-xl font-bold text-gray-900">Book a Ride</h1>
+          <h1 className="text-xl font-bold text-gray-900">Offer a Ride</h1>
+          <div className="ml-auto flex items-center gap-2 text-sm text-green-600">
+            <CheckCircle2 className="w-5 h-5" />
+            <span className="font-medium">Verified Ride Host</span>
+          </div>
         </div>
       </header>
 
       {/* Search and Map Container */}
       <div className="flex-1 flex flex-col md:flex-row">
-        {/* Left Panel - Search */}
+        {/* Left Panel - Form */}
         <div className="w-full md:w-96 bg-white border-r border-gray-200 p-4 overflow-y-auto">
           <div className="space-y-4">
-            {/* Pickup Location */}
+            {/* Origin Location */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Pickup Location
+                Origin Location
               </label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
                   type="text"
-                  value={pickupSearch}
-                  onChange={(e) => handlePickupSearch(e.target.value)}
+                  value={originSearch}
+                  onChange={(e) => handleOriginSearch(e.target.value)}
                   placeholder="Search or click on map"
                   className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 />
-                {pickupLocation && (
+                {originLocation && (
                   <button
-                    onClick={clearPickup}
+                    onClick={clearOrigin}
                     className="absolute right-3 top-1/2 transform -translate-y-1/2"
-                    aria-label="Clear pickup location"
+                    aria-label="Clear origin location"
                   >
                     <X className="w-5 h-5 text-gray-400 hover:text-gray-600" />
                   </button>
@@ -1044,12 +1024,12 @@ export function BookaRide({ setCurrentView }: SharedProps) {
               </div>
               
               {/* Search Results */}
-              {pickupResults.length > 0 && (
+              {originResults.length > 0 && (
                 <div className="mt-2 border border-gray-200 rounded-lg overflow-hidden">
-                  {pickupResults.map((result) => (
+                  {originResults.map((result) => (
                     <button
                       key={result.place_id}
-                      onClick={() => selectPickup(result)}
+                      onClick={() => selectOrigin(result)}
                       className="w-full text-left px-4 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
                     >
                       <MapPin className="w-4 h-4 text-primary-600 inline mr-2" />
@@ -1059,38 +1039,38 @@ export function BookaRide({ setCurrentView }: SharedProps) {
                 </div>
               )}
               
-              {searchingPickup && (
+              {searchingOrigin && (
                 <p className="mt-2 text-sm text-gray-500">Searching...</p>
               )}
 
               {/* Selected Location */}
-              {pickupLocation && (
+              {originLocation && (
                 <div className="mt-2 p-3 bg-primary-50 rounded-lg">
                   <p className="text-sm font-medium text-primary-900">Selected:</p>
-                  <p className="text-sm text-primary-700">{pickupLocation.address || 'Location selected'}</p>
+                  <p className="text-sm text-primary-700">{originLocation.address || 'Location selected'}</p>
                 </div>
               )}
             </div>
 
-            {/* Dropoff Location */}
+            {/* Destination Location */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Dropoff Location
+                Destination Location
               </label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
                   type="text"
-                  value={dropoffSearch}
-                  onChange={(e) => handleDropoffSearch(e.target.value)}
+                  value={destinationSearch}
+                  onChange={(e) => handleDestinationSearch(e.target.value)}
                   placeholder="Search or click on map"
                   className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 />
-                {dropoffLocation && (
+                {destinationLocation && (
                   <button
-                    onClick={clearDropoff}
+                    onClick={clearDestination}
                     className="absolute right-3 top-1/2 transform -translate-y-1/2"
-                    aria-label="Clear dropoff location"
+                    aria-label="Clear destination location"
                   >
                     <X className="w-5 h-5 text-gray-400 hover:text-gray-600" />
                   </button>
@@ -1098,12 +1078,12 @@ export function BookaRide({ setCurrentView }: SharedProps) {
               </div>
               
               {/* Search Results */}
-              {dropoffResults.length > 0 && (
+              {destinationResults.length > 0 && (
                 <div className="mt-2 border border-gray-200 rounded-lg overflow-hidden">
-                  {dropoffResults.map((result) => (
+                  {destinationResults.map((result) => (
                     <button
                       key={result.place_id}
-                      onClick={() => selectDropoff(result)}
+                      onClick={() => selectDestination(result)}
                       className="w-full text-left px-4 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
                     >
                       <MapPin className="w-4 h-4 text-red-600 inline mr-2" />
@@ -1113,48 +1093,94 @@ export function BookaRide({ setCurrentView }: SharedProps) {
                 </div>
               )}
               
-              {searchingDropoff && (
+              {searchingDestination && (
                 <p className="mt-2 text-sm text-gray-500">Searching...</p>
               )}
 
               {/* Selected Location */}
-              {dropoffLocation && (
+              {destinationLocation && (
                 <div className="mt-2 p-3 bg-red-50 rounded-lg">
                   <p className="text-sm font-medium text-red-900">Selected:</p>
-                  <p className="text-sm text-red-700">{dropoffLocation.address || 'Location selected'}</p>
+                  <p className="text-sm text-red-700">{destinationLocation.address || 'Location selected'}</p>
                 </div>
               )}
             </div>
 
-            {/* Instructions */}
-            <div className="mt-4 space-y-2">
-              <div className="p-3 bg-blue-50 rounded-lg">
-                <p className="text-sm text-blue-800">
-                  <strong>Tip:</strong> You can search for addresses, click on the map, or drag the pins to select precise locations.
-                </p>
-              </div>
-              <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
-                <p className="text-sm text-amber-800">
-                  <strong>Note:</strong> All searches are limited to Manitoba, Canada.
-                </p>
-              </div>
+            {/* Departure Time */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Departure Time
+              </label>
+              <input
+                type="datetime-local"
+                value={departureTime}
+                onChange={(e) => setDepartureTime(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                required
+              />
             </div>
 
-            {/* Next Button - Only show when both locations are selected */}
-            {pickupLocation && dropoffLocation && (
-              <div className="mt-6 pt-6 border-t border-gray-200">
-                <button
-                  onClick={handleNext}
-                  className="w-full px-6 py-3 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700 transition-colors shadow-md hover:shadow-lg flex items-center justify-center gap-2"
-                >
-                  <span>Next</span>
-                  <ArrowLeft className="w-5 h-5 rotate-180" />
-                </button>
-                <p className="text-xs text-gray-500 text-center mt-2">
-                  Review and confirm your ride details
-                </p>
-              </div>
-            )}
+            {/* Available Seats */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Available Seats
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="10"
+                value={availableSeats}
+                onChange={(e) => setAvailableSeats(parseInt(e.target.value) || 1)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                required
+              />
+            </div>
+
+            {/* Vehicle Info */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Vehicle Info (Optional)
+              </label>
+              <input
+                type="text"
+                value={vehicleInfo}
+                onChange={(e) => setVehicleInfo(e.target.value)}
+                placeholder="e.g., Blue Honda Civic"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              />
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Notes (Optional)
+              </label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Any additional information about your ride..."
+                rows={3}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              />
+            </div>
+
+            {/* Submit Button */}
+            <div className="mt-6 pt-6 border-t border-gray-200">
+              <button
+                onClick={handleSubmit}
+                disabled={isSubmitting || !originLocation || !destinationLocation || !departureTime}
+                className="w-full px-6 py-3 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700 transition-colors shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>Creating Ride Offer...</span>
+                  </>
+                ) : (
+                  <span>Create Ride Offer</span>
+                )}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1187,7 +1213,7 @@ export function BookaRide({ setCurrentView }: SharedProps) {
           )}
           
           <div
-            id="booka-ride-map-container"
+            id="offera-ride-map-container"
             ref={setContainerRef}
             className="absolute inset-0"
             style={{ 
@@ -1206,3 +1232,4 @@ export function BookaRide({ setCurrentView }: SharedProps) {
     </div>
   );
 }
+

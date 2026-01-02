@@ -55,8 +55,8 @@ export function createRasterTileStyle(tileSource: keyof typeof OSM_TILE_SOURCES 
         source: 'osm',
       },
     ],
-    glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf', // Required but not used for raster
-    sprite: 'https://demotiles.maplibre.org/sprites/sprites', // Required but not used for raster
+    // Note: glyphs and sprite are not needed for raster tiles
+    // They're only required for vector tiles with text labels and icons
   };
 }
 

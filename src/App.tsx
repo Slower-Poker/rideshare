@@ -12,6 +12,8 @@ import { RideMapView } from './components/RideMapView';
 import { MyAccountView } from './components/MyAccountView';
 import { TermsPage } from './components/TermsPage';
 import { BookaRide } from './components/BookaRide';
+import { BookRideConfirm } from './components/BookRideConfirm';
+import { OfferaRide } from './components/OfferaRide';
 import 'react-toastify/dist/ReactToastify.css';
 import './index.css';
 
@@ -32,7 +34,7 @@ function App() {
     }
     const stored = sessionStorage.getItem(VIEW_STORAGE_KEY);
     // Don't restore 'terms' view - always start at home to avoid auto-redirect loop
-    if (stored && ['home', 'map', 'account', 'activeRide', 'bookRide'].includes(stored)) {
+    if (stored && ['home', 'map', 'account', 'activeRide', 'bookRide', 'offerRide'].includes(stored)) {
       wasRestored.current = true; // We restored from storage = page refresh
       return stored as ViewType;
     }
@@ -135,6 +137,10 @@ function App() {
         return <RideMapView {...sharedProps} />;
       case 'bookRide':
         return <BookaRide {...sharedProps} />;
+      case 'bookRideConfirm':
+        return <BookRideConfirm {...sharedProps} />;
+      case 'offerRide':
+        return <OfferaRide {...sharedProps} />;
       case 'account':
         return <MyAccountView {...sharedProps} onAuthChange={checkAuthStatus} />;
       case 'terms':

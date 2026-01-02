@@ -22,6 +22,7 @@ const schema = a.schema({
       termsAccepted: a.boolean().default(false),
       termsAcceptedDate: a.datetime(),
       termsVersion: a.string(),
+      verifiedRideHost: a.boolean().default(false),
       // Relationships
       hostedRides: a.hasMany('RideOffer', 'hostId'),
       joinedRides: a.hasMany('RideParticipant', 'riderId'),

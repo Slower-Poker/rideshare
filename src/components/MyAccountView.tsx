@@ -1,10 +1,14 @@
 import { Authenticator, useAuthenticator } from '@aws-amplify/ui-react';
 import { signOut } from 'aws-amplify/auth';
-import { ArrowLeft, LogOut, User, Settings, Wallet, Activity, Info, FileText } from 'lucide-react';
-import { useEffect, useEffectEvent } from 'react';
+import { ArrowLeft, LogOut, User, Settings, Wallet, Activity, Info, FileText, CheckCircle2 } from 'lucide-react';
+import { useEffect, useEffectEvent, useState, useCallback } from 'react';
+import { generateClient } from 'aws-amplify/data';
+import type { Schema } from '../../amplify/data/resource';
 import type { SharedProps } from '../types';
 import { toast } from '../utils/toast';
 import '@aws-amplify/ui-react/styles.css';
+
+const client = generateClient<Schema>();
 
 interface MyAccountViewProps extends SharedProps {
   onAuthChange: () => void;
@@ -17,6 +21,46 @@ function AccountContent({
   user,
   onAuthChange 
 }: MyAccountViewProps) {
+  const [userProfile, setUserProfile] = useState<Schema['UserProfile']['type'] | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+
+  // Fetch user profile
+  const fetchUserProfile = useCallback(async () => {
+    if (!user) {
+      setLoadingProfile(false);
+      return;
+    }
+
+    try {
+      const { data: profiles, errors } = await client.models.UserProfile.list({
+        filter: { userId: { eq: user.userId } },
+        limit: 1,
+      });
+
+      if (errors) {
+        if (import.meta.env.DEV) {
+          console.error('Error fetching user profile:', errors);
+        }
+        setLoadingProfile(false);
+        return;
+      }
+
+      if (profiles && profiles.length > 0) {
+        setUserProfile(profiles[0] as Schema['UserProfile']['type']);
+      }
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error('Error fetching user profile:', error);
+      }
+    } finally {
+      setLoadingProfile(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    fetchUserProfile();
+  }, [fetchUserProfile]);
+
   const handleSignOut = async () => {
     try {
       await signOut();
@@ -33,6 +77,7 @@ function AccountContent({
 
   // Get user info from props (when user is already authenticated) or from authUser (when signing in)
   const displayUser = user;
+  const isVerified = userProfile?.verifiedRideHost === true;
 
   return (
     <div className="space-y-6">
@@ -47,10 +92,18 @@ function AccountContent({
           <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center">
             <User className="w-8 h-8 text-primary-600" />
           </div>
-          <div>
-            <h3 className="text-xl font-semibold text-gray-900">
-              {displayUser?.username || 'User'}
-            </h3>
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <h3 className="text-xl font-semibold text-gray-900">
+                {displayUser?.username || 'User'}
+              </h3>
+              {isVerified && (
+                <div className="flex items-center gap-1 text-green-600" title="Verified Ride Host">
+                  <CheckCircle2 className="w-5 h-5" />
+                  <span className="text-sm font-medium">Verified Ride Host</span>
+                </div>
+              )}
+            </div>
             <p className="text-gray-600">{displayUser?.email || ''}</p>
           </div>
         </div>

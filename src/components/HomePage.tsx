@@ -91,7 +91,7 @@ export function HomePage({ setCurrentView, user }: SharedProps) {
             <button
               onClick={() => {
                 if (user) {
-                  toast.info('Create ride modal coming soon!');
+                  setCurrentView('offerRide');
                 } else {
                   setCurrentView('account');
                 }
