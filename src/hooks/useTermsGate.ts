@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { generateClient } from 'aws-amplify/data';
 import type { Schema } from '../../amplify/data/resource';
 import type { AuthUser } from '../types';
@@ -16,24 +16,26 @@ export function useTermsGate(user: AuthUser | null) {
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState<Schema['UserProfile']['type'] | null>(null);
 
-  useEffect(() => {
+  const checkTermsAcceptance = useCallback(async () => {
     if (!user) {
       setLoading(false);
       setTermsAccepted(false);
       return;
     }
 
-    checkTermsAcceptance();
-  }, [user]);
-
-  const checkTermsAcceptance = async () => {
-    if (!user) return;
-
     try {
-      // Fetch user profile
-      const { data: profiles } = await client.models.UserProfile.list({
+      // Fetch user profile with error handling
+      const { data: profiles, errors } = await client.models.UserProfile.list({
         filter: { userId: { eq: user.userId } },
+        limit: 1, // Only need one profile
       });
+
+      if (errors) {
+        console.error('Error fetching user profile:', errors);
+        setTermsAccepted(false);
+        setLoading(false);
+        return;
+      }
 
       if (profiles && profiles.length > 0) {
         const profile = profiles[0];
@@ -46,7 +48,26 @@ export function useTermsGate(user: AuthUser | null) {
         
         setTermsAccepted(accepted);
       } else {
-        setTermsAccepted(false);
+        // Create user profile if it doesn't exist
+        try {
+          const { data: newProfile, errors: createErrors } = await client.models.UserProfile.create({
+            userId: user.userId,
+            email: user.email,
+            username: user.username,
+            termsAccepted: false,
+          });
+          
+          if (createErrors) {
+            console.error('Error creating user profile:', createErrors);
+            setTermsAccepted(false);
+          } else if (newProfile) {
+            setUserProfile(newProfile);
+            setTermsAccepted(false);
+          }
+        } catch (createError) {
+          console.error('Error creating user profile:', createError);
+          setTermsAccepted(false);
+        }
       }
     } catch (error) {
       console.error('Error checking terms acceptance:', error);
@@ -54,21 +75,64 @@ export function useTermsGate(user: AuthUser | null) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    checkTermsAcceptance();
+  }, [checkTermsAcceptance]);
 
   const acceptTerms = async () => {
-    if (!user || !userProfile) return false;
+    if (!user) return false;
 
+    // If profile doesn't exist, create it first
+    if (!userProfile) {
+      try {
+        const { data: newProfile, errors: createErrors } = await client.models.UserProfile.create({
+          userId: user.userId,
+          email: user.email,
+          username: user.username,
+          termsAccepted: true,
+          termsVersion: CURRENT_TERMS_VERSION,
+          termsAcceptedDate: new Date().toISOString(),
+        });
+
+        if (createErrors) {
+          console.error('Error creating user profile:', createErrors);
+          return false;
+        }
+
+        if (newProfile) {
+          setUserProfile(newProfile);
+          setTermsAccepted(true);
+          return true;
+        }
+      } catch (error) {
+        console.error('Error creating user profile:', error);
+        return false;
+      }
+    }
+
+    // Update existing profile
     try {
-      await client.models.UserProfile.update({
+      const { data: updatedProfile, errors } = await client.models.UserProfile.update({
         id: userProfile.id,
         termsAccepted: true,
         termsVersion: CURRENT_TERMS_VERSION,
         termsAcceptedDate: new Date().toISOString(),
       });
 
-      setTermsAccepted(true);
-      return true;
+      if (errors) {
+        console.error('Error updating terms acceptance:', errors);
+        return false;
+      }
+
+      if (updatedProfile) {
+        setUserProfile(updatedProfile);
+        setTermsAccepted(true);
+        return true;
+      }
+
+      return false;
     } catch (error) {
       console.error('Error accepting terms:', error);
       return false;
