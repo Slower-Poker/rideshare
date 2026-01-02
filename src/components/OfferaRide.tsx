@@ -890,6 +890,11 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
       }
 
       const profile = profiles[0];
+      if (!profile || !profile.id) {
+        toast.error('User profile is invalid. Please contact support.');
+        setIsSubmitting(false);
+        return;
+      }
 
       // Validate departure time is in the future
       const departureDateTime = new Date(departureTime);

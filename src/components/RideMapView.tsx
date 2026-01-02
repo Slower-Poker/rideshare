@@ -1,20 +1,10 @@
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import type { SharedProps } from '../types';
-import {
-  DEFAULT_CENTER,
-  DEFAULT_ZOOM,
-  TILE_LAYER_URL,
-  TILE_LAYER_ATTRIBUTION,
-  createRideMarkerIcon,
-} from '../utils/mapUtils';
 
 export function RideMapView({ setCurrentView }: SharedProps) {
   // TODO: Fetch actual rides from database
   // This is a work-in-progress feature. Ride fetching will be implemented
   // using Amplify Data subscriptions for real-time updates.
-  const rides: never[] = [];
-  const loading = false;
 
   return (
     <div className="h-screen flex flex-col">

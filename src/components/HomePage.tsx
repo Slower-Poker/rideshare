@@ -1,6 +1,5 @@
 import { Car, Map, User } from 'lucide-react';
 import type { SharedProps } from '../types';
-import { toast } from '../utils/toast';
 
 export function HomePage({ setCurrentView, user }: SharedProps) {
   return (

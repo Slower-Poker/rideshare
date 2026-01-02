@@ -4,7 +4,9 @@
  * Implements version fallback strategy for reliability
  */
 
-type MapLibreGlobal = typeof import('maplibre-gl');
+// MapLibre is loaded from CDN, so we use a generic type
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type MapLibreGlobal = any;
 
 const VERSIONS = ['3.6.2', '3.0.0', '2.4.0'] as const;
 const CDN_BASE_JS = 'https://cdn.jsdelivr.net/npm/maplibre-gl@';
@@ -161,6 +163,9 @@ export function loadMapLibre(options: LoadOptions = {}): Promise<MapLibreGlobal>
     }
 
     const version = VERSIONS[vIndex];
+    if (!version) {
+      throw new Error('Invalid version index');
+    }
 
     try {
       // Load CSS first

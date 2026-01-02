@@ -105,8 +105,8 @@ function App() {
   // IMPORTANT: Don't auto-redirect to terms - let user see home page
   // Terms will be shown when user tries to do something that requires acceptance
   useEffect(() => {
-    // Don't redirect if we're already on terms page or if loading
-    if (termsLoading || currentView === 'terms') {
+    // Don't redirect if loading
+    if (termsLoading) {
       return;
     }
     
