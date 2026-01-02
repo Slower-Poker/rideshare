@@ -22,12 +22,10 @@ function AccountContent({
   onAuthChange 
 }: MyAccountViewProps) {
   const [userProfile, setUserProfile] = useState<Schema['UserProfile']['type'] | null>(null);
-  const [loadingProfile, setLoadingProfile] = useState(true);
 
   // Fetch user profile
   const fetchUserProfile = useCallback(async () => {
     if (!user) {
-      setLoadingProfile(false);
       return;
     }
 
@@ -41,7 +39,6 @@ function AccountContent({
         if (import.meta.env.DEV) {
           console.error('Error fetching user profile:', errors);
         }
-        setLoadingProfile(false);
         return;
       }
 
@@ -52,8 +49,6 @@ function AccountContent({
       if (import.meta.env.DEV) {
         console.error('Error fetching user profile:', error);
       }
-    } finally {
-      setLoadingProfile(false);
     }
   }, [user]);
 

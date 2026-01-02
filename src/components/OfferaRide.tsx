@@ -15,6 +15,7 @@ import {
   calculateBounds,
 } from '../utils/maplibreUtils';
 import { toast } from '../utils/toast';
+import type { MapLibreMap, MapLibreMarker } from '../types/maplibre';
 
 const client = generateClient<Schema>();
 
@@ -27,10 +28,6 @@ interface GeocodeResult {
   lon: string;
   place_id: number;
 }
-
-// MapLibre marker types
-type MapLibreMap = any; // MapLibre Map instance
-type MapLibreMarker = any; // MapLibre Marker instance
 
 export function OfferaRide({ setCurrentView, user }: SharedProps) {
   const [originLocation, setOriginLocation] = useState<Location | null>(null);
@@ -67,6 +64,7 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const containerRetryCountRef = useRef(0);
   const maxRetries = 20;
+  const mapResizeHandlerRef = useRef<(() => void) | null>(null);
   
   // Use refs to track current locations for map click handler
   const originLocationRef = useRef<Location | null>(null);
@@ -141,6 +139,12 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
       
       if (searchTimeoutRef.current) {
         clearTimeout(searchTimeoutRef.current);
+      }
+      
+      // Cleanup resize handler
+      if (mapResizeHandlerRef.current) {
+        window.removeEventListener('resize', mapResizeHandlerRef.current);
+        mapResizeHandlerRef.current = null;
       }
       
       // Cleanup map and markers
@@ -564,6 +568,7 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
         }
       };
       window.addEventListener('resize', resizeHandler);
+      mapResizeHandlerRef.current = resizeHandler;
 
       // Get user location
       if (navigator.geolocation) {
@@ -868,16 +873,35 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
         limit: 1,
       });
 
-      if (profileErrors || !profiles || profiles.length === 0) {
-        toast.error('Error: User profile not found');
+      if (profileErrors) {
+        if (import.meta.env.DEV) {
+          console.error('Error fetching user profile:', profileErrors);
+        }
+        toast.error('Unable to verify your account. Please try again.');
         setIsSubmitting(false);
+        return;
+      }
+
+      if (!profiles || profiles.length === 0) {
+        toast.error('User profile not found. Please complete your profile in Account settings.');
+        setIsSubmitting(false);
+        setCurrentView('account');
         return;
       }
 
       const profile = profiles[0];
 
-      // Create ride offer
-      const departureDateTime = new Date(departureTime).toISOString();
+      // Validate departure time is in the future
+      const departureDateTime = new Date(departureTime);
+      const now = new Date();
+
+      if (departureDateTime <= now) {
+        toast.error('Departure time must be in the future');
+        setIsSubmitting(false);
+        return;
+      }
+
+      const departureDateTimeISO = departureDateTime.toISOString();
       
       const { data: rideOffer, errors } = await client.models.RideOffer.create({
         hostId: profile.id,
@@ -887,7 +911,7 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
         destinationLatitude: destinationLocation.latitude,
         destinationLongitude: destinationLocation.longitude,
         destinationAddress: destinationLocation.address || '',
-        departureTime: departureDateTime,
+        departureTime: departureDateTimeISO,
         availableSeats: availableSeats,
         seatsBooked: 0,
         status: 'available',
