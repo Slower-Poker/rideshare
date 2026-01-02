@@ -135,7 +135,6 @@ export function MyAccountView({
             </h2>
             <Authenticator
               signUpAttributes={['given_name', 'family_name', 'phone_number']}
-              socialProviders={['google']}
             >
               <AuthenticatedContent 
                 setCurrentView={setCurrentView}

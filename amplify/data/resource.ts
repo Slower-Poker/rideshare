@@ -92,7 +92,7 @@ const schema = a.schema({
       ratedUserId: a.id().required(),
       rating: a.integer().required(), // 1-5 stars
       comment: a.string(),
-      ratingType: a.enum(['driver', 'rider']).required(),
+      ratingType: a.enum(['driver', 'rider']),
       createdAt: a.datetime().required(),
     })
     .authorization((allow) => [
