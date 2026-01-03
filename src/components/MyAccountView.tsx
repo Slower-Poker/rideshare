@@ -1,7 +1,7 @@
 import { Authenticator, useAuthenticator } from '@aws-amplify/ui-react';
 import { signOut } from 'aws-amplify/auth';
 import { ArrowLeft, LogOut, User, Settings, Wallet, Activity, Info, FileText, CheckCircle2 } from 'lucide-react';
-import { useEffect, useEffectEvent, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { generateClient } from 'aws-amplify/data';
 import type { Schema } from '../../amplify/data/resource';
 import type { SharedProps } from '../types';
@@ -47,8 +47,13 @@ function AccountContent({
       if (profiles && profiles.length > 0) {
         const profile = profiles[0] as Schema['UserProfile']['type'];
         setUserProfile(profile);
-        // Set distance unit from profile, default to 'km'
-        setDistanceUnit((profile.distanceUnit as 'km' | 'miles') || 'km');
+        // Set distance unit from profile with validation, default to 'km'
+        const validUnits: ('km' | 'miles')[] = ['km', 'miles'];
+        const unit = profile.distanceUnit;
+        const validUnit = unit && validUnits.includes(unit as 'km' | 'miles') 
+          ? (unit as 'km' | 'miles') 
+          : 'km';
+        setDistanceUnit(validUnit);
       }
     } catch (error) {
       if (import.meta.env.DEV) {
@@ -273,7 +278,7 @@ function AccountContent({
   );
 }
 
-// AuthenticatedContent that uses useAuthenticator (only used inside Authenticator)
+  // AuthenticatedContent that uses useAuthenticator (only used inside Authenticator)
 function AuthenticatedContent({ 
   currentView,
   setCurrentView, 
@@ -282,17 +287,18 @@ function AuthenticatedContent({
 }: MyAccountViewProps) {
   const { user: authUser } = useAuthenticator();
 
-  // Use useEffectEvent to avoid dependency issues (React 19.2)
-  const handleAuthChange = useEffectEvent(() => {
-    onAuthChange();
-  });
+  // Use ref pattern to avoid stale closures (compatible with all React versions)
+  const onAuthChangeRef = useRef(onAuthChange);
+  useEffect(() => {
+    onAuthChangeRef.current = onAuthChange;
+  }, [onAuthChange]);
 
   // Trigger auth check when user signs in via Authenticator
   useEffect(() => {
     if (authUser && !user) {
-      handleAuthChange();
+      onAuthChangeRef.current();
     }
-  }, [authUser, user]); // onAuthChange not needed in deps due to useEffectEvent
+  }, [authUser, user]);
 
   // Use authUser data when available, otherwise use user prop
   const displayUser = user || {

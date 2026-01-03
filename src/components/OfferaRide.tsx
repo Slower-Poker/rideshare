@@ -25,6 +25,16 @@ const client = generateClient<Schema>();
 // Nominatim API endpoint for OSM geocoding
 const NOMINATIM_API = 'https://nominatim.openstreetmap.org/search';
 
+// Form validation constants
+const PRICE_MIN = 10;
+const PRICE_MAX = 200;
+const PRICE_STEP = 1;
+const RADIUS_MIN = 0;
+const RADIUS_MAX = 100;
+const RADIUS_STEP = 0.5;
+const DEFAULT_DISTANCE_UNIT: 'km' | 'miles' = 'km';
+const VALID_DISTANCE_UNITS: ('km' | 'miles')[] = ['km', 'miles'];
+
 interface GeocodeResult {
   display_name: string;
   lat: string;
@@ -50,14 +60,16 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Radius and price fields
-  const [pickupRadius, setPickupRadius] = useState<number>(0);
-  const [dropoffRadius, setDropoffRadius] = useState<number>(0);
-  const [price, setPrice] = useState<number>(10.00);
-  const [distanceUnit, setDistanceUnit] = useState<'km' | 'miles'>('km');
+  const [pickupRadius, setPickupRadius] = useState<number>(RADIUS_MIN);
+  const [dropoffRadius, setDropoffRadius] = useState<number>(RADIUS_MIN);
+  const [price, setPrice] = useState<number>(PRICE_MIN);
+  const [priceError, setPriceError] = useState<string | null>(null);
+  const [distanceUnit, setDistanceUnit] = useState<'km' | 'miles'>(DEFAULT_DISTANCE_UNIT);
   
   // Verification state
   const [isVerified, setIsVerified] = useState(false);
   const [checkingVerification, setCheckingVerification] = useState(true);
+  const [loadingProfile, setLoadingProfile] = useState(false);
   
   // MapLibre loading states
   const [isScriptLoading, setIsScriptLoading] = useState(false);
@@ -90,10 +102,12 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
     if (!user) {
       setCheckingVerification(false);
       setIsVerified(false);
+      setLoadingProfile(false);
       return;
     }
 
     const checkVerification = async () => {
+      setLoadingProfile(true);
       try {
         const { data: profiles, errors } = await client.models.UserProfile.list({
           filter: { userId: { eq: user.userId } },
@@ -106,22 +120,33 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
           }
           setIsVerified(false);
           setCheckingVerification(false);
+          setLoadingProfile(false);
           return;
         }
 
         const profile = profiles?.[0];
         setIsVerified(profile?.verifiedRideHost === true);
-        // Set distance unit from profile, default to 'km'
+        
+        // Set distance unit from profile with validation, default to 'km'
         if (profile?.distanceUnit) {
-          setDistanceUnit((profile.distanceUnit as 'km' | 'miles') || 'km');
+          const unit = profile.distanceUnit as string;
+          const validUnit = VALID_DISTANCE_UNITS.includes(unit as 'km' | 'miles') 
+            ? (unit as 'km' | 'miles') 
+            : DEFAULT_DISTANCE_UNIT;
+          setDistanceUnit(validUnit);
+        } else {
+          setDistanceUnit(DEFAULT_DISTANCE_UNIT);
         }
+        
         setCheckingVerification(false);
+        setLoadingProfile(false);
       } catch (error) {
         if (import.meta.env.DEV) {
           console.error('Error checking verification:', error);
         }
         setIsVerified(false);
         setCheckingVerification(false);
+        setLoadingProfile(false);
       }
     };
 
@@ -244,7 +269,9 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
       
       return filteredResults.slice(0, 5);
     } catch (error) {
-      console.error('Geocoding error:', error);
+      if (import.meta.env.DEV) {
+        console.error('Geocoding error:', error);
+      }
       toast.error('Failed to search address');
       return [];
     }
@@ -505,7 +532,9 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
       } else {
         const errorMsg = 'Map container has no dimensions. Please refresh the page.';
         setMapError(errorMsg);
-        console.error(errorMsg);
+        if (import.meta.env.DEV) {
+          console.error(errorMsg);
+        }
       }
       return;
     }
@@ -559,7 +588,9 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
 
       // Handle map errors
       map.on('error', (e: any) => {
-        console.error('Map error:', e);
+        if (import.meta.env.DEV) {
+          console.error('Map error:', e);
+        }
         if (e.error && e.error.message) {
           setMapError(`Map error: ${e.error.message}`);
         }
@@ -634,7 +665,9 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
 
       mapRef.current = map;
     } catch (error) {
-      console.error('Map initialization error:', error);
+      if (import.meta.env.DEV) {
+        console.error('Map initialization error:', error);
+      }
       setMapError('Failed to initialize map. Please refresh the page.');
     }
   }, [handleMapClick]);
@@ -670,7 +703,9 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
         setIsScriptLoading(false);
         const errorMsg = `Failed to load map library: ${error.message}. Please refresh the page.`;
         setMapError(errorMsg);
-        console.error('MapLibre load error:', error);
+        if (import.meta.env.DEV) {
+          console.error('MapLibre load error:', error);
+        }
       },
     });
   }, [isScriptLoading, initializeMap]);
@@ -1042,18 +1077,18 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
       return;
     }
 
-    if (price < 10.00) {
-      toast.error('Price must be at least $10.00');
+    if (price < PRICE_MIN) {
+      toast.error(`Price must be at least $${PRICE_MIN.toFixed(2)}`);
       return;
     }
 
-    if (price > 200.00) {
-      toast.error('Price cannot exceed $200.00');
+    if (price > PRICE_MAX) {
+      toast.error(`Price cannot exceed $${PRICE_MAX.toFixed(2)}`);
       return;
     }
 
-    if (pickupRadius < 0 || dropoffRadius < 0) {
-      toast.error('Radius values cannot be negative');
+    if (pickupRadius < RADIUS_MIN || dropoffRadius < RADIUS_MIN) {
+      toast.error(`Radius values cannot be less than ${RADIUS_MIN}`);
       return;
     }
 
@@ -1075,7 +1110,8 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
         if (import.meta.env.DEV) {
           console.error('Error fetching user profile:', profileErrors);
         }
-        toast.error('Unable to verify your account. Please try again.');
+        const errorMessage = profileErrors[0]?.message || 'Unable to verify your account. Please try again.';
+        toast.error(errorMessage);
         setIsSubmitting(false);
         return;
       }
@@ -1133,7 +1169,8 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
         if (import.meta.env.DEV) {
           console.error('Error creating ride offer:', errors);
         }
-        toast.error('Failed to create ride offer. Please try again.');
+        const errorMessage = errors[0]?.message || 'Failed to create ride offer. Please try again.';
+        toast.error(errorMessage);
         setIsSubmitting(false);
         return;
       }
@@ -1332,27 +1369,34 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
               <div className="space-y-2">
                 <input
                   type="range"
-                  min="0"
-                  max="100"
-                  step="0.5"
+                  min={RADIUS_MIN}
+                  max={RADIUS_MAX}
+                  step={RADIUS_STEP}
                   value={pickupRadius}
-                  onChange={(e) => setPickupRadius(parseFloat(e.target.value) || 0)}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value) || RADIUS_MIN;
+                    setPickupRadius(Math.min(RADIUS_MAX, Math.max(RADIUS_MIN, val)));
+                  }}
                   className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
                 />
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-500">0 {distanceUnit === 'km' ? 'km' : 'mi'}</span>
+                  <span className="text-xs text-gray-500">{RADIUS_MIN} {distanceUnit === 'km' ? 'km' : 'mi'}</span>
                   <div className="flex items-center gap-2">
                     <input
                       type="number"
-                      min="0"
-                      step="0.5"
+                      min={RADIUS_MIN}
+                      max={RADIUS_MAX}
+                      step={RADIUS_STEP}
                       value={pickupRadius.toFixed(1)}
-                      onChange={(e) => setPickupRadius(parseFloat(e.target.value) || 0)}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || RADIUS_MIN;
+                        setPickupRadius(Math.min(RADIUS_MAX, Math.max(RADIUS_MIN, val)));
+                      }}
                       className="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                     />
                     <span className="text-sm text-gray-700">{distanceUnit === 'km' ? 'km' : 'mi'}</span>
                   </div>
-                  <span className="text-xs text-gray-500">100 {distanceUnit === 'km' ? 'km' : 'mi'}</span>
+                  <span className="text-xs text-gray-500">{RADIUS_MAX} {distanceUnit === 'km' ? 'km' : 'mi'}</span>
                 </div>
                 <p className="text-xs text-gray-500">
                   Areas within this radius from the pickup location are included in the ride price.
@@ -1368,27 +1412,34 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
               <div className="space-y-2">
                 <input
                   type="range"
-                  min="0"
-                  max="100"
-                  step="0.5"
+                  min={RADIUS_MIN}
+                  max={RADIUS_MAX}
+                  step={RADIUS_STEP}
                   value={dropoffRadius}
-                  onChange={(e) => setDropoffRadius(parseFloat(e.target.value) || 0)}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value) || RADIUS_MIN;
+                    setDropoffRadius(Math.min(RADIUS_MAX, Math.max(RADIUS_MIN, val)));
+                  }}
                   className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-red-600"
                 />
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-500">0 {distanceUnit === 'km' ? 'km' : 'mi'}</span>
+                  <span className="text-xs text-gray-500">{RADIUS_MIN} {distanceUnit === 'km' ? 'km' : 'mi'}</span>
                   <div className="flex items-center gap-2">
                     <input
                       type="number"
-                      min="0"
-                      step="0.5"
+                      min={RADIUS_MIN}
+                      max={RADIUS_MAX}
+                      step={RADIUS_STEP}
                       value={dropoffRadius.toFixed(1)}
-                      onChange={(e) => setDropoffRadius(parseFloat(e.target.value) || 0)}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || RADIUS_MIN;
+                        setDropoffRadius(Math.min(RADIUS_MAX, Math.max(RADIUS_MIN, val)));
+                      }}
                       className="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                     />
                     <span className="text-sm text-gray-700">{distanceUnit === 'km' ? 'km' : 'mi'}</span>
                   </div>
-                  <span className="text-xs text-gray-500">100 {distanceUnit === 'km' ? 'km' : 'mi'}</span>
+                  <span className="text-xs text-gray-500">{RADIUS_MAX} {distanceUnit === 'km' ? 'km' : 'mi'}</span>
                 </div>
                 <p className="text-xs text-gray-500">
                   Areas within this radius from the dropoff location are included in the ride price.
@@ -1404,37 +1455,57 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
               <div className="space-y-2">
                 <input
                   type="range"
-                  min="10"
-                  max="200"
-                  step="1"
+                  min={PRICE_MIN}
+                  max={PRICE_MAX}
+                  step={PRICE_STEP}
                   value={price}
                   onChange={(e) => {
-                    const val = parseFloat(e.target.value) || 10;
-                    setPrice(Math.min(200, Math.max(10, val)));
+                    const val = parseFloat(e.target.value) || PRICE_MIN;
+                    const clampedVal = Math.min(PRICE_MAX, Math.max(PRICE_MIN, val));
+                    setPrice(clampedVal);
+                    setPriceError(null);
                   }}
                   className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
                 />
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-500">$10.00</span>
+                  <span className="text-xs text-gray-500">${PRICE_MIN.toFixed(2)}</span>
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-gray-700">$</span>
                     <input
                       type="number"
-                      min="10"
-                      max="200"
-                      step="1"
+                      min={PRICE_MIN}
+                      max={PRICE_MAX}
+                      step={PRICE_STEP}
                       value={price.toFixed(2)}
                       onChange={(e) => {
-                        const val = parseFloat(e.target.value) || 10;
-                        setPrice(Math.min(200, Math.max(10, val)));
+                        const val = parseFloat(e.target.value);
+                        if (isNaN(val)) {
+                          setPriceError('Please enter a valid number');
+                          return;
+                        }
+                        if (val < PRICE_MIN) {
+                          setPriceError(`Minimum price is $${PRICE_MIN.toFixed(2)}`);
+                          setPrice(PRICE_MIN);
+                        } else if (val > PRICE_MAX) {
+                          setPriceError(`Maximum price is $${PRICE_MAX.toFixed(2)}`);
+                          setPrice(PRICE_MAX);
+                        } else {
+                          setPriceError(null);
+                          setPrice(val);
+                        }
                       }}
-                      className="w-24 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      className={`w-24 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
+                        priceError ? 'border-red-300' : 'border-gray-300'
+                      }`}
                     />
                   </div>
-                  <span className="text-xs text-gray-500">$200.00</span>
+                  <span className="text-xs text-gray-500">${PRICE_MAX.toFixed(2)}</span>
                 </div>
+                {priceError && (
+                  <p className="text-xs text-red-600">{priceError}</p>
+                )}
                 <p className="text-xs text-gray-500">
-                  Minimum price is $10.00. Maximum price is $200.00. Price increments in $1.00 steps.
+                  Minimum price is ${PRICE_MIN.toFixed(2)}. Maximum price is ${PRICE_MAX.toFixed(2)}. Price increments in ${PRICE_STEP.toFixed(2)} steps.
                 </p>
               </div>
             </div>
@@ -1509,7 +1580,7 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
               )}
               <button
                 onClick={handleSubmit}
-                disabled={isSubmitting || !originLocation || !destinationLocation || !departureTime || price < 10 || price > 200 || !isVerified}
+                disabled={isSubmitting || !originLocation || !destinationLocation || !departureTime || price < PRICE_MIN || price > PRICE_MAX || !isVerified}
                 className="w-full px-6 py-3 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700 transition-colors shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {isSubmitting ? (
