@@ -23,7 +23,7 @@ const schema = a.schema({
       termsAcceptedDate: a.datetime(),
       termsVersion: a.string(),
       verifiedRideHost: a.boolean().default(false),
-      distanceUnit: a.enum(['km', 'miles']).default('km'),
+      distanceUnit: a.enum(['km', 'miles']),
       // Relationships
       hostedRides: a.hasMany('RideOffer', 'hostId'),
       joinedRides: a.hasMany('RideParticipant', 'riderId'),
