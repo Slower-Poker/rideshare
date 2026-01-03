@@ -172,7 +172,10 @@ export function createCircleGeoJSON(center: Location, radiusKm: number): CircleG
         type: 'Polygon',
         coordinates: [[]],
       },
-      properties: {},
+      properties: {
+        radius: 0,
+        center: [center.longitude, center.latitude],
+      },
     };
   }
 
@@ -206,7 +209,9 @@ export function createCircleGeoJSON(center: Location, radiusKm: number): CircleG
   }
   
   // Close the polygon
-  coordinates.push(coordinates[0]);
+  if (coordinates.length > 0) {
+    coordinates.push(coordinates[0]);
+  }
   
   return {
     type: 'Feature',

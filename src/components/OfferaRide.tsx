@@ -15,7 +15,6 @@ import {
   calculateBounds,
   createCircleGeoJSON,
   convertToKm,
-  convertFromKm,
 } from '../utils/maplibreUtils';
 import { toast } from '../utils/toast';
 import type { MapLibreMap, MapLibreMarker } from '../types/maplibre';
@@ -69,7 +68,6 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
   // Verification state
   const [isVerified, setIsVerified] = useState(false);
   const [checkingVerification, setCheckingVerification] = useState(true);
-  const [loadingProfile, setLoadingProfile] = useState(false);
   
   // MapLibre loading states
   const [isScriptLoading, setIsScriptLoading] = useState(false);
@@ -102,12 +100,10 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
     if (!user) {
       setCheckingVerification(false);
       setIsVerified(false);
-      setLoadingProfile(false);
       return;
     }
 
     const checkVerification = async () => {
-      setLoadingProfile(true);
       try {
         const { data: profiles, errors } = await client.models.UserProfile.list({
           filter: { userId: { eq: user.userId } },
@@ -120,7 +116,6 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
           }
           setIsVerified(false);
           setCheckingVerification(false);
-          setLoadingProfile(false);
           return;
         }
 
@@ -139,14 +134,12 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
         }
         
         setCheckingVerification(false);
-        setLoadingProfile(false);
       } catch (error) {
         if (import.meta.env.DEV) {
           console.error('Error checking verification:', error);
         }
         setIsVerified(false);
         setCheckingVerification(false);
-        setLoadingProfile(false);
       }
     };
 

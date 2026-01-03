@@ -28,6 +28,12 @@ export interface MapLibreMapInstance {
     bounds: [[number, number], [number, number]],
     options?: { padding?: number; animate?: boolean }
   ): void;
+  getLayer(id: string): unknown | undefined;
+  removeLayer(id: string): void;
+  getSource(id: string): unknown | undefined;
+  removeSource(id: string): void;
+  addSource(id: string, source: unknown): void;
+  addLayer(layer: unknown): void;
 }
 
 export type MapLibreMap = MapLibreMapInstance;
