@@ -48,7 +48,7 @@ export default defineConfig({
           {
             // Cache OpenStreetMap tiles for better performance
             urlPattern: /^https:\/\/([a-c])\.tile\.openstreetmap\.org\/.*/i,
-            handler: 'CacheFirst',
+            handler: 'NetworkFirst',
             options: {
               cacheName: 'osm-tiles-cache',
               expiration: {
@@ -58,7 +58,7 @@ export default defineConfig({
               cacheableResponse: {
                 statuses: [0, 200]
               },
-              // Use network if cache fails
+              // Use cache if network times out
               networkTimeoutSeconds: 3
             }
           }
