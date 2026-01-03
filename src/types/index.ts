@@ -31,7 +31,13 @@ export interface RideOfferFormData {
   availableSeats: number;
   vehicleInfo?: string;
   notes?: string;
+  pickupRadius?: number;
+  dropoffRadius?: number;
+  price: number;
 }
+
+// Distance unit type
+export type DistanceUnit = 'km' | 'miles';
 
 export interface JoinRideFormData {
   pickup?: Location;
