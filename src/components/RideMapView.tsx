@@ -1,18 +1,10 @@
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import type { SharedProps } from '../types';
-import {
-  DEFAULT_CENTER,
-  DEFAULT_ZOOM,
-  TILE_LAYER_URL,
-  TILE_LAYER_ATTRIBUTION,
-  createRideMarkerIcon,
-} from '../utils/mapUtils';
 
 export function RideMapView({ setCurrentView }: SharedProps) {
   // TODO: Fetch actual rides from database
-  const rides: never[] = [];
-  const loading = false;
+  // This is a work-in-progress feature. Ride fetching will be implemented
+  // using Amplify Data subscriptions for real-time updates.
 
   return (
     <div className="h-screen flex flex-col">
@@ -30,8 +22,18 @@ export function RideMapView({ setCurrentView }: SharedProps) {
         </div>
       </header>
 
-      {/* Map Container */}
-      <div className="flex-1 relative">
+      {/* Map Container - Temporarily disabled */}
+      <div className="flex-1 relative bg-gray-100 border-2 border-dashed border-gray-300">
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center">
+          <Loader2 className="w-16 h-16 text-gray-400 mb-4" />
+          <h3 className="text-xl font-semibold text-gray-700 mb-2">Map Temporarily Disabled</h3>
+          <p className="text-gray-600">
+            The map feature is currently being fixed. This page will show available rides once the map is restored.
+          </p>
+        </div>
+        
+        {/* Map code commented out temporarily */}
+        {/*
         {loading && (
           <div className="absolute inset-0 bg-gray-50 bg-opacity-90 flex items-center justify-center z-20">
             <div className="text-center">
@@ -52,8 +54,7 @@ export function RideMapView({ setCurrentView }: SharedProps) {
             url={TILE_LAYER_URL}
           />
           
-          {/* TODO: Add ride markers when data is available */}
-          {rides.map((ride: never) => (
+          {rides.map(() => (
             <Marker
               key={`ride-marker-placeholder`}
               position={[0, 0]}
@@ -66,7 +67,6 @@ export function RideMapView({ setCurrentView }: SharedProps) {
           ))}
         </MapContainer>
 
-        {/* Empty State */}
         {!loading && rides.length === 0 && (
           <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-lg p-8 max-w-md z-10 text-center pointer-events-none">
             <p className="text-gray-600">
@@ -74,6 +74,7 @@ export function RideMapView({ setCurrentView }: SharedProps) {
             </p>
           </div>
         )}
+        */}
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { ArrowLeft, Check } from 'lucide-react';
 import type { SharedProps } from '../types';
 import { toast } from '../utils/toast';
@@ -12,13 +13,20 @@ export function TermsPage({
   onAcceptTerms,
   requireAcceptance 
 }: TermsPageProps) {
+  const [accepting, setAccepting] = useState(false);
+
   const handleAccept = async () => {
-    const success = await onAcceptTerms();
-    if (success) {
-      toast.success('Terms accepted');
-      setCurrentView('home');
-    } else {
-      toast.error('Failed to accept terms');
+    setAccepting(true);
+    try {
+      const success = await onAcceptTerms();
+      if (success) {
+        toast.success('Terms accepted');
+        setCurrentView('home');
+      } else {
+        toast.error('Failed to accept terms');
+      }
+    } finally {
+      setAccepting(false);
     }
   };
 
@@ -144,10 +152,11 @@ export function TermsPage({
           <div className="bg-white rounded-lg shadow-md p-8">
             <button
               onClick={handleAccept}
-              className="w-full flex items-center justify-center gap-2 bg-primary-600 text-white py-4 px-6 rounded-lg hover:bg-primary-700 transition-colors text-lg font-medium"
+              disabled={accepting}
+              className="w-full flex items-center justify-center gap-2 bg-primary-600 text-white py-4 px-6 rounded-lg hover:bg-primary-700 transition-colors text-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Check className="w-6 h-6" />
-              I Accept the Terms of Service
+              {accepting ? 'Accepting...' : 'I Accept the Terms of Service'}
             </button>
           </div>
         )}

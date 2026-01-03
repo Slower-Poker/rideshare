@@ -1,4 +1,4 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertCircle } from 'lucide-react';
 
 interface Props {
@@ -25,8 +25,10 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   private handleReset = () => {
-    this.setState({ hasError: false, error: null });
-    window.location.reload();
+    // Set a flag to indicate we're recovering from an error
+    sessionStorage.setItem('errorRecovery', 'true');
+    // Navigate to home page instead of just reloading
+    window.location.href = '/';
   };
 
   public render() {
@@ -44,6 +46,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <button
               onClick={this.handleReset}
               className="w-full bg-primary-600 text-white py-2 px-4 rounded-lg hover:bg-primary-700 transition-colors"
+              aria-label="Reload the page to recover from error"
             >
               Reload Page
             </button>
