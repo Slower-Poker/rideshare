@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Search, MapPin, X, Loader2 } from 'lucide-react';
+import { ArrowLeft, Search, MapPin, X, Loader2, ChevronDown, ChevronUp, Info } from 'lucide-react';
 import type { SharedProps, Location } from '../types';
 import { loadMapLibre, isMapLibreLoaded, getMapLibreInstance } from '../utils/maplibreLoader';
 import {
@@ -45,6 +45,7 @@ export function BookaRide({ setCurrentView }: SharedProps) {
   const [containerReady, setContainerReady] = useState(false);
   
   const [userLocation, setUserLocation] = useState<Location | null>(null);
+  const [showTips, setShowTips] = useState(false);
   
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -58,6 +59,7 @@ export function BookaRide({ setCurrentView }: SharedProps) {
   const dropoffLocationRef = useRef<Location | null>(null);
   const isMountedRef = useRef(true);
   const fetchAbortControllerRef = useRef<AbortController | null>(null);
+  const routeAbortControllerRef = useRef<AbortController | null>(null);
   
   // Keep refs in sync with state
   useEffect(() => {
@@ -85,6 +87,11 @@ export function BookaRide({ setCurrentView }: SharedProps) {
         fetchAbortControllerRef.current = null;
       }
       
+      if (routeAbortControllerRef.current) {
+        routeAbortControllerRef.current.abort();
+        routeAbortControllerRef.current = null;
+      }
+      
       if (searchTimeoutRef.current) {
         clearTimeout(searchTimeoutRef.current);
       }
@@ -92,6 +99,15 @@ export function BookaRide({ setCurrentView }: SharedProps) {
       // Cleanup map and markers
       if (mapRef.current) {
         try {
+          // Remove route layer and source
+          const map = mapRef.current;
+          if (map.getLayer('route')) {
+            map.removeLayer('route');
+          }
+          if (map.getSource('route')) {
+            map.removeSource('route');
+          }
+          
           // Remove all markers
           markersRef.current.forEach(marker => {
             try {
@@ -966,6 +982,151 @@ export function BookaRide({ setCurrentView }: SharedProps) {
     };
   }, [pickupLocation, dropoffLocation, userLocation, isMapLoaded]);
 
+  // Update route when pickup and dropoff locations change
+  useEffect(() => {
+    if (!isMapLoaded || !mapRef.current) {
+      return;
+    }
+
+    const map = mapRef.current;
+    const maplibregl = getMapLibreInstance();
+    if (!maplibregl) {
+      return;
+    }
+
+    // Cancel any previous route request
+    if (routeAbortControllerRef.current) {
+      routeAbortControllerRef.current.abort();
+    }
+
+    // Remove existing route if locations are not both set
+    if (!pickupLocation || !dropoffLocation) {
+      try {
+        if (map.getLayer('route')) {
+          map.removeLayer('route');
+        }
+        if (map.getSource('route')) {
+          map.removeSource('route');
+        }
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          console.debug('Error removing route:', error);
+        }
+      }
+      return;
+    }
+
+    // Fetch route from OSRM
+    const abortController = new AbortController();
+    routeAbortControllerRef.current = abortController;
+
+    const pickupCoords = locationToCoordinates(pickupLocation);
+    const dropoffCoords = locationToCoordinates(dropoffLocation);
+    
+    // OSRM API endpoint (using demo server)
+    // Format: /route/v1/driving/{coordinates}?overview=full&geometries=geojson
+    const coordinates = `${pickupCoords[0]},${pickupCoords[1]};${dropoffCoords[0]},${dropoffCoords[1]}`;
+    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=full&geometries=geojson`;
+
+    fetch(osrmUrl, {
+      signal: abortController.signal,
+      headers: {
+        'User-Agent': 'RideShare.Click/1.0',
+      },
+    })
+      .then((res) => {
+        if (!isMountedRef.current || abortController.signal.aborted) {
+          return null;
+        }
+        if (!res.ok) {
+          throw new Error('Route request failed');
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (!isMountedRef.current || abortController.signal.aborted || !data) {
+          return;
+        }
+
+        if (data.code !== 'Ok' || !data.routes || data.routes.length === 0) {
+          if (import.meta.env.DEV) {
+            console.debug('OSRM route not found:', data);
+          }
+          return;
+        }
+
+        const route = data.routes[0];
+        const routeGeometry = route.geometry;
+
+        // Ensure map is still loaded and valid
+        if (!isMountedRef.current || !mapRef.current || mapRef.current !== map) {
+          return;
+        }
+
+        // Remove existing route layer and source if they exist
+        try {
+          if (map.getLayer('route')) {
+            map.removeLayer('route');
+          }
+          if (map.getSource('route')) {
+            map.removeSource('route');
+          }
+        } catch (error) {
+          // Ignore errors if layer/source doesn't exist
+          if (import.meta.env.DEV) {
+            console.debug('Error removing existing route:', error);
+          }
+        }
+
+        // Add route as GeoJSON source
+        try {
+          map.addSource('route', {
+            type: 'geojson',
+            data: routeGeometry,
+          });
+
+          // Add route layer
+          map.addLayer({
+            id: 'route',
+            type: 'line',
+            source: 'route',
+            layout: {
+              'line-join': 'round',
+              'line-cap': 'round',
+            },
+            paint: {
+              'line-color': '#3b82f6', // Blue color
+              'line-width': 4,
+              'line-opacity': 0.8,
+            },
+          });
+        } catch (error) {
+          if (import.meta.env.DEV) {
+            console.debug('Error adding route to map:', error);
+          }
+        }
+      })
+      .catch((error) => {
+        if (error.name === 'AbortError') {
+          return;
+        }
+        
+        if (!isMountedRef.current) {
+          return;
+        }
+
+        if (import.meta.env.DEV) {
+          console.debug('Route fetch error:', error);
+        }
+      });
+
+    return () => {
+      if (routeAbortControllerRef.current === abortController) {
+        abortController.abort();
+      }
+    };
+  }, [pickupLocation, dropoffLocation, isMapLoaded]);
+
   // Clear locations
   const clearPickup = () => {
     setPickupLocation(null);
@@ -1016,29 +1177,29 @@ export function BookaRide({ setCurrentView }: SharedProps) {
       {/* Search and Map Container */}
       <div className="flex-1 flex flex-col md:flex-row">
         {/* Left Panel - Search */}
-        <div className="w-full md:w-96 bg-white border-r border-gray-200 p-4 overflow-y-auto">
-          <div className="space-y-4">
+        <div className="w-full md:w-80 bg-white border-r border-gray-200 p-3 overflow-y-auto">
+          <div className="space-y-3">
             {/* Pickup Location */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">
                 Pickup Location
               </label>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
                   value={pickupSearch}
                   onChange={(e) => handlePickupSearch(e.target.value)}
                   placeholder="Search or click on map"
-                  className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  className="w-full pl-8 pr-8 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 />
                 {pickupLocation && (
                   <button
                     onClick={clearPickup}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2"
+                    className="absolute right-2.5 top-1/2 transform -translate-y-1/2"
                     aria-label="Clear pickup location"
                   >
-                    <X className="w-5 h-5 text-gray-400 hover:text-gray-600" />
+                    <X className="w-4 h-4 text-gray-400 hover:text-gray-600" />
                   </button>
                 )}
               </div>
@@ -1065,34 +1226,35 @@ export function BookaRide({ setCurrentView }: SharedProps) {
 
               {/* Selected Location */}
               {pickupLocation && (
-                <div className="mt-2 p-3 bg-primary-50 rounded-lg">
-                  <p className="text-sm font-medium text-primary-900">Selected:</p>
-                  <p className="text-sm text-primary-700">{pickupLocation.address || 'Location selected'}</p>
+                <div className="mt-1.5 px-2.5 py-1.5 bg-primary-50 rounded border border-primary-200">
+                  <p className="text-xs font-medium text-primary-900 truncate" title={pickupLocation.address || 'Location selected'}>
+                    {pickupLocation.address || 'Location selected'}
+                  </p>
                 </div>
               )}
             </div>
 
             {/* Dropoff Location */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">
                 Dropoff Location
               </label>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
                   value={dropoffSearch}
                   onChange={(e) => handleDropoffSearch(e.target.value)}
                   placeholder="Search or click on map"
-                  className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  className="w-full pl-8 pr-8 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 />
                 {dropoffLocation && (
                   <button
                     onClick={clearDropoff}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2"
+                    className="absolute right-2.5 top-1/2 transform -translate-y-1/2"
                     aria-label="Clear dropoff location"
                   >
-                    <X className="w-5 h-5 text-gray-400 hover:text-gray-600" />
+                    <X className="w-4 h-4 text-gray-400 hover:text-gray-600" />
                   </button>
                 )}
               </div>
@@ -1119,38 +1281,57 @@ export function BookaRide({ setCurrentView }: SharedProps) {
 
               {/* Selected Location */}
               {dropoffLocation && (
-                <div className="mt-2 p-3 bg-red-50 rounded-lg">
-                  <p className="text-sm font-medium text-red-900">Selected:</p>
-                  <p className="text-sm text-red-700">{dropoffLocation.address || 'Location selected'}</p>
+                <div className="mt-1.5 px-2.5 py-1.5 bg-red-50 rounded border border-red-200">
+                  <p className="text-xs font-medium text-red-900 truncate" title={dropoffLocation.address || 'Location selected'}>
+                    {dropoffLocation.address || 'Location selected'}
+                  </p>
                 </div>
               )}
             </div>
 
-            {/* Instructions */}
-            <div className="mt-4 space-y-2">
-              <div className="p-3 bg-blue-50 rounded-lg">
-                <p className="text-sm text-blue-800">
-                  <strong>Tip:</strong> You can search for addresses, click on the map, or drag the pins to select precise locations.
-                </p>
-              </div>
-              <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
-                <p className="text-sm text-amber-800">
-                  <strong>Note:</strong> All searches are limited to Manitoba, Canada.
-                </p>
-              </div>
+            {/* Instructions - Collapsible */}
+            <div className="mt-2">
+              <button
+                onClick={() => setShowTips(!showTips)}
+                className="w-full flex items-center justify-between px-2 py-1.5 text-xs text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded transition-colors"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Info className="w-3.5 h-3.5" />
+                  <span>Tips & Info</span>
+                </div>
+                {showTips ? (
+                  <ChevronUp className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronDown className="w-3.5 h-3.5" />
+                )}
+              </button>
+              {showTips && (
+                <div className="mt-1.5 space-y-1.5">
+                  <div className="px-2.5 py-1.5 bg-blue-50 rounded border border-blue-200">
+                    <p className="text-xs text-blue-800">
+                      <strong>Tip:</strong> You can search for addresses, click on the map, or drag the pins to select precise locations.
+                    </p>
+                  </div>
+                  <div className="px-2.5 py-1.5 bg-amber-50 rounded border border-amber-200">
+                    <p className="text-xs text-amber-800">
+                      <strong>Note:</strong> All searches are limited to Manitoba, Canada.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Next Button - Only show when both locations are selected */}
             {pickupLocation && dropoffLocation && (
-              <div className="mt-6 pt-6 border-t border-gray-200">
+              <div className="mt-4 pt-3 border-t border-gray-200">
                 <button
                   onClick={handleNext}
-                  className="w-full px-6 py-3 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700 transition-colors shadow-md hover:shadow-lg flex items-center justify-center gap-2"
+                  className="w-full px-4 py-2.5 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700 transition-colors shadow-md hover:shadow-lg flex items-center justify-center gap-2 text-sm"
                 >
                   <span>Next</span>
-                  <ArrowLeft className="w-5 h-5 rotate-180" />
+                  <ArrowLeft className="w-4 h-4 rotate-180" />
                 </button>
-                <p className="text-xs text-gray-500 text-center mt-2">
+                <p className="text-xs text-gray-500 text-center mt-1.5">
                   Review and confirm your ride details
                 </p>
               </div>

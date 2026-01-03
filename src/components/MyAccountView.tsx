@@ -1,7 +1,7 @@
 import { Authenticator, useAuthenticator } from '@aws-amplify/ui-react';
 import { signOut } from 'aws-amplify/auth';
 import { ArrowLeft, LogOut, User, Settings, Wallet, Activity, Info, FileText, CheckCircle2 } from 'lucide-react';
-import { useEffect, useEffectEvent, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { generateClient } from 'aws-amplify/data';
 import type { Schema } from '../../amplify/data/resource';
 import type { SharedProps } from '../types';
@@ -22,6 +22,8 @@ function AccountContent({
   onAuthChange 
 }: MyAccountViewProps) {
   const [userProfile, setUserProfile] = useState<Schema['UserProfile']['type'] | null>(null);
+  const [distanceUnit, setDistanceUnit] = useState<'km' | 'miles'>('km');
+  const [isSavingUnit, setIsSavingUnit] = useState(false);
 
   // Fetch user profile
   const fetchUserProfile = useCallback(async () => {
@@ -43,7 +45,15 @@ function AccountContent({
       }
 
       if (profiles && profiles.length > 0) {
-        setUserProfile(profiles[0] as Schema['UserProfile']['type']);
+        const profile = profiles[0] as Schema['UserProfile']['type'];
+        setUserProfile(profile);
+        // Set distance unit from profile with validation, default to 'km'
+        const validUnits: ('km' | 'miles')[] = ['km', 'miles'];
+        const unit = profile.distanceUnit;
+        const validUnit = unit && validUnits.includes(unit as 'km' | 'miles') 
+          ? (unit as 'km' | 'miles') 
+          : 'km';
+        setDistanceUnit(validUnit);
       }
     } catch (error) {
       if (import.meta.env.DEV) {
@@ -67,6 +77,42 @@ function AccountContent({
         console.error('Error signing out:', error);
       }
       toast.error('Failed to sign out');
+    }
+  };
+
+  const handleDistanceUnitChange = async (unit: 'km' | 'miles') => {
+    if (!userProfile || !userProfile.id) {
+      toast.error('Profile not found. Please try again.');
+      return;
+    }
+
+    setIsSavingUnit(true);
+    try {
+      const { data, errors } = await client.models.UserProfile.update({
+        id: userProfile.id,
+        distanceUnit: unit,
+      });
+
+      if (errors) {
+        if (import.meta.env.DEV) {
+          console.error('Error updating distance unit:', errors);
+        }
+        toast.error('Failed to update distance unit preference');
+        return;
+      }
+
+      if (data) {
+        setDistanceUnit(unit);
+        setUserProfile(data as Schema['UserProfile']['type']);
+        toast.success('Distance unit preference updated');
+      }
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error('Error updating distance unit:', error);
+      }
+      toast.error('Failed to update distance unit preference');
+    } finally {
+      setIsSavingUnit(false);
     }
   };
 
@@ -132,12 +178,48 @@ function AccountContent({
           <Settings className="w-6 h-6 text-primary-600" />
           <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
         </div>
-        <p className="text-gray-600">
+        <p className="text-gray-600 mb-4">
           Manage your preferences, notifications, and privacy settings.
         </p>
-        <p className="text-sm text-gray-500 mt-2">
-          Settings customization coming soon...
-        </p>
+        
+        {/* Distance Unit Preference */}
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          <label className="block text-sm font-medium text-gray-700 mb-3">
+            Distance Unit
+          </label>
+          <p className="text-sm text-gray-600 mb-3">
+            Choose your preferred unit for displaying distances (kilometers or miles).
+          </p>
+          <div className="flex gap-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="distanceUnit"
+                value="km"
+                checked={distanceUnit === 'km'}
+                onChange={() => handleDistanceUnitChange('km')}
+                disabled={isSavingUnit}
+                className="w-4 h-4 text-primary-600 focus:ring-primary-500"
+              />
+              <span className="text-sm text-gray-700">Kilometers (km)</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="distanceUnit"
+                value="miles"
+                checked={distanceUnit === 'miles'}
+                onChange={() => handleDistanceUnitChange('miles')}
+                disabled={isSavingUnit}
+                className="w-4 h-4 text-primary-600 focus:ring-primary-500"
+              />
+              <span className="text-sm text-gray-700">Miles</span>
+            </label>
+          </div>
+          {isSavingUnit && (
+            <p className="text-xs text-gray-500 mt-2">Saving...</p>
+          )}
+        </div>
       </div>
 
       {/* Wallet & Activity Section */}
@@ -196,7 +278,7 @@ function AccountContent({
   );
 }
 
-// AuthenticatedContent that uses useAuthenticator (only used inside Authenticator)
+  // AuthenticatedContent that uses useAuthenticator (only used inside Authenticator)
 function AuthenticatedContent({ 
   currentView,
   setCurrentView, 
@@ -205,17 +287,18 @@ function AuthenticatedContent({
 }: MyAccountViewProps) {
   const { user: authUser } = useAuthenticator();
 
-  // Use useEffectEvent to avoid dependency issues (React 19.2)
-  const handleAuthChange = useEffectEvent(() => {
-    onAuthChange();
-  });
+  // Use ref pattern to avoid stale closures (compatible with all React versions)
+  const onAuthChangeRef = useRef(onAuthChange);
+  useEffect(() => {
+    onAuthChangeRef.current = onAuthChange;
+  }, [onAuthChange]);
 
   // Trigger auth check when user signs in via Authenticator
   useEffect(() => {
     if (authUser && !user) {
-      handleAuthChange();
+      onAuthChangeRef.current();
     }
-  }, [authUser, user]); // onAuthChange not needed in deps due to useEffectEvent
+  }, [authUser, user]);
 
   // Use authUser data when available, otherwise use user prop
   const displayUser = user || {

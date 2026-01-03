@@ -114,3 +114,124 @@ export function calculateBounds(locations: Location[]): [[number, number], [numb
   return [[minLng, minLat], [maxLng, maxLat]];
 }
 
+/**
+ * Convert distance from miles to kilometers
+ */
+export function milesToKm(miles: number): number {
+  return miles * 1.60934;
+}
+
+/**
+ * Convert distance from kilometers to miles
+ */
+export function kmToMiles(km: number): number {
+  return km * 0.621371;
+}
+
+/**
+ * Convert radius from user's preferred unit to kilometers
+ */
+export function convertToKm(value: number, unit: 'km' | 'miles'): number {
+  return unit === 'miles' ? milesToKm(value) : value;
+}
+
+/**
+ * Convert radius from kilometers to user's preferred unit
+ */
+export function convertFromKm(value: number, unit: 'km' | 'miles'): number {
+  return unit === 'miles' ? kmToMiles(value) : value;
+}
+
+/**
+ * GeoJSON Feature type for circle geometry
+ */
+export interface CircleGeoJSON {
+  type: 'Feature';
+  geometry: {
+    type: 'Polygon';
+    coordinates: [[number, number][]];
+  };
+  properties: {
+    radius: number;
+    center: [number, number];
+  };
+}
+
+/**
+ * Create a circle GeoJSON feature for a given center and radius (in kilometers)
+ * @param center - The center location of the circle
+ * @param radiusKm - The radius of the circle in kilometers
+ * @returns A GeoJSON Feature representing the circle
+ */
+export function createCircleGeoJSON(center: Location, radiusKm: number): CircleGeoJSON {
+  if (radiusKm <= 0) {
+    // Return empty polygon if radius is 0 or negative
+    return {
+      type: 'Feature',
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[]],
+      },
+      properties: {
+        radius: 0,
+        center: [center.longitude, center.latitude],
+      },
+    };
+  }
+
+  const points = 64; // Number of points to approximate the circle
+  const coordinates: [number, number][] = [];
+  
+  // Earth's radius in kilometers
+  const earthRadiusKm = 6371;
+  
+  // Store first coordinate to close the polygon
+  let firstCoordinate: [number, number] | null = null;
+  
+  for (let i = 0; i <= points; i++) {
+    const angle = (i * 360) / points;
+    const latRad = (center.latitude * Math.PI) / 180;
+    const lngRad = (center.longitude * Math.PI) / 180;
+    const angleRad = (angle * Math.PI) / 180;
+    
+    // Calculate point on circle using haversine formula
+    const lat = Math.asin(
+      Math.sin(latRad) * Math.cos(radiusKm / earthRadiusKm) +
+      Math.cos(latRad) * Math.sin(radiusKm / earthRadiusKm) * Math.cos(angleRad)
+    );
+    
+    const lng = lngRad + Math.atan2(
+      Math.sin(angleRad) * Math.sin(radiusKm / earthRadiusKm) * Math.cos(latRad),
+      Math.cos(radiusKm / earthRadiusKm) - Math.sin(latRad) * Math.sin(lat)
+    );
+    
+    const coord: [number, number] = [
+      (lng * 180) / Math.PI,
+      (lat * 180) / Math.PI,
+    ];
+    
+    if (i === 0) {
+      firstCoordinate = coord;
+    }
+    
+    coordinates.push(coord);
+  }
+  
+  // Close the polygon by adding the first coordinate at the end
+  if (firstCoordinate) {
+    coordinates.push(firstCoordinate);
+  }
+  
+  return {
+    type: 'Feature',
+    geometry: {
+      type: 'Polygon',
+      coordinates: [coordinates],
+    },
+    properties: {
+      radius: radiusKm,
+      center: [center.longitude, center.latitude],
+    },
+  };
+}
+

@@ -13,6 +13,8 @@ import {
   isInManitoba,
   constrainToManitoba,
   calculateBounds,
+  createCircleGeoJSON,
+  convertToKm,
 } from '../utils/maplibreUtils';
 import { toast } from '../utils/toast';
 import type { MapLibreMap, MapLibreMarker } from '../types/maplibre';
@@ -21,6 +23,16 @@ const client = generateClient<Schema>();
 
 // Nominatim API endpoint for OSM geocoding
 const NOMINATIM_API = 'https://nominatim.openstreetmap.org/search';
+
+// Form validation constants
+const PRICE_MIN = 10;
+const PRICE_MAX = 200;
+const PRICE_STEP = 1;
+const RADIUS_MIN = 0;
+const RADIUS_MAX = 100;
+const RADIUS_STEP = 0.5;
+const DEFAULT_DISTANCE_UNIT: 'km' | 'miles' = 'km';
+const VALID_DISTANCE_UNITS: ('km' | 'miles')[] = ['km', 'miles'];
 
 interface GeocodeResult {
   display_name: string;
@@ -46,6 +58,13 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   
+  // Radius and price fields
+  const [pickupRadius, setPickupRadius] = useState<number>(RADIUS_MIN);
+  const [dropoffRadius, setDropoffRadius] = useState<number>(RADIUS_MIN);
+  const [price, setPrice] = useState<number>(PRICE_MIN);
+  const [priceError, setPriceError] = useState<string | null>(null);
+  const [distanceUnit, setDistanceUnit] = useState<'km' | 'miles'>(DEFAULT_DISTANCE_UNIT);
+  
   // Verification state
   const [isVerified, setIsVerified] = useState(false);
   const [checkingVerification, setCheckingVerification] = useState(true);
@@ -66,13 +85,17 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
   const maxRetries = 20;
   const mapResizeHandlerRef = useRef<(() => void) | null>(null);
   
+  // Refs for circle layers
+  const pickupCircleSourceRef = useRef<string | null>(null);
+  const dropoffCircleSourceRef = useRef<string | null>(null);
+  
   // Use refs to track current locations for map click handler
   const originLocationRef = useRef<Location | null>(null);
   const destinationLocationRef = useRef<Location | null>(null);
   const isMountedRef = useRef(true);
   const fetchAbortControllerRef = useRef<AbortController | null>(null);
 
-  // Check verification status
+  // Check verification status and fetch user preferences
   useEffect(() => {
     if (!user) {
       setCheckingVerification(false);
@@ -98,6 +121,18 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
 
         const profile = profiles?.[0];
         setIsVerified(profile?.verifiedRideHost === true);
+        
+        // Set distance unit from profile with validation, default to 'km'
+        if (profile?.distanceUnit) {
+          const unit = profile.distanceUnit as string;
+          const validUnit = VALID_DISTANCE_UNITS.includes(unit as 'km' | 'miles') 
+            ? (unit as 'km' | 'miles') 
+            : DEFAULT_DISTANCE_UNIT;
+          setDistanceUnit(validUnit);
+        } else {
+          setDistanceUnit(DEFAULT_DISTANCE_UNIT);
+        }
+        
         setCheckingVerification(false);
       } catch (error) {
         if (import.meta.env.DEV) {
@@ -150,6 +185,25 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
       // Cleanup map and markers
       if (mapRef.current) {
         try {
+          // Remove circle layers and sources
+          const map = mapRef.current;
+          try {
+            if (map.getLayer('pickup-circle')) {
+              map.removeLayer('pickup-circle');
+            }
+            if (map.getSource('pickup-circle')) {
+              map.removeSource('pickup-circle');
+            }
+            if (map.getLayer('dropoff-circle')) {
+              map.removeLayer('dropoff-circle');
+            }
+            if (map.getSource('dropoff-circle')) {
+              map.removeSource('dropoff-circle');
+            }
+          } catch (e) {
+            // Ignore errors
+          }
+          
           // Remove all markers
           markersRef.current.forEach(marker => {
             try {
@@ -208,7 +262,9 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
       
       return filteredResults.slice(0, 5);
     } catch (error) {
-      console.error('Geocoding error:', error);
+      if (import.meta.env.DEV) {
+        console.error('Geocoding error:', error);
+      }
       toast.error('Failed to search address');
       return [];
     }
@@ -469,7 +525,9 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
       } else {
         const errorMsg = 'Map container has no dimensions. Please refresh the page.';
         setMapError(errorMsg);
-        console.error(errorMsg);
+        if (import.meta.env.DEV) {
+          console.error(errorMsg);
+        }
       }
       return;
     }
@@ -523,7 +581,9 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
 
       // Handle map errors
       map.on('error', (e: any) => {
-        console.error('Map error:', e);
+        if (import.meta.env.DEV) {
+          console.error('Map error:', e);
+        }
         if (e.error && e.error.message) {
           setMapError(`Map error: ${e.error.message}`);
         }
@@ -598,7 +658,9 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
 
       mapRef.current = map;
     } catch (error) {
-      console.error('Map initialization error:', error);
+      if (import.meta.env.DEV) {
+        console.error('Map initialization error:', error);
+      }
       setMapError('Failed to initialize map. Please refresh the page.');
     }
   }, [handleMapClick]);
@@ -634,7 +696,9 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
         setIsScriptLoading(false);
         const errorMsg = `Failed to load map library: ${error.message}. Please refresh the page.`;
         setMapError(errorMsg);
-        console.error('MapLibre load error:', error);
+        if (import.meta.env.DEV) {
+          console.error('MapLibre load error:', error);
+        }
       },
     });
   }, [isScriptLoading, initializeMap]);
@@ -824,6 +888,153 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
     };
   }, [originLocation, destinationLocation, userLocation, isMapLoaded]);
 
+  // Update circle layers when locations or radii change
+  useEffect(() => {
+    if (!isMapLoaded || !mapRef.current) {
+      return;
+    }
+
+    const map = mapRef.current;
+    const maplibregl = getMapLibreInstance();
+    if (!maplibregl) {
+      return;
+    }
+
+    // Update pickup circle
+    if (originLocation && pickupRadius > 0) {
+      const radiusKm = convertToKm(pickupRadius, distanceUnit);
+      const circleGeoJSON = createCircleGeoJSON(originLocation, radiusKm);
+      
+      try {
+        // Remove existing layer and source if they exist
+        if (map.getLayer('pickup-circle')) {
+          map.removeLayer('pickup-circle');
+        }
+        if (map.getSource('pickup-circle')) {
+          map.removeSource('pickup-circle');
+        }
+
+        // Add new source and layer
+        map.addSource('pickup-circle', {
+          type: 'geojson',
+          data: circleGeoJSON,
+        });
+
+        map.addLayer({
+          id: 'pickup-circle',
+          type: 'fill',
+          source: 'pickup-circle',
+          paint: {
+            'fill-color': '#10b981',
+            'fill-opacity': 0.3,
+          },
+        });
+
+        map.addLayer({
+          id: 'pickup-circle-border',
+          type: 'line',
+          source: 'pickup-circle',
+          paint: {
+            'line-color': '#10b981',
+            'line-width': 2,
+            'line-opacity': 0.8,
+          },
+        });
+
+        pickupCircleSourceRef.current = 'pickup-circle';
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          console.debug('Error adding pickup circle:', error);
+        }
+      }
+    } else {
+      // Remove pickup circle if radius is 0 or location is cleared
+      try {
+        if (map.getLayer('pickup-circle-border')) {
+          map.removeLayer('pickup-circle-border');
+        }
+        if (map.getLayer('pickup-circle')) {
+          map.removeLayer('pickup-circle');
+        }
+        if (map.getSource('pickup-circle')) {
+          map.removeSource('pickup-circle');
+        }
+        pickupCircleSourceRef.current = null;
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          console.debug('Error removing pickup circle:', error);
+        }
+      }
+    }
+
+    // Update dropoff circle
+    if (destinationLocation && dropoffRadius > 0) {
+      const radiusKm = convertToKm(dropoffRadius, distanceUnit);
+      const circleGeoJSON = createCircleGeoJSON(destinationLocation, radiusKm);
+      
+      try {
+        // Remove existing layer and source if they exist
+        if (map.getLayer('dropoff-circle')) {
+          map.removeLayer('dropoff-circle');
+        }
+        if (map.getSource('dropoff-circle')) {
+          map.removeSource('dropoff-circle');
+        }
+
+        // Add new source and layer
+        map.addSource('dropoff-circle', {
+          type: 'geojson',
+          data: circleGeoJSON,
+        });
+
+        map.addLayer({
+          id: 'dropoff-circle',
+          type: 'fill',
+          source: 'dropoff-circle',
+          paint: {
+            'fill-color': '#ef4444',
+            'fill-opacity': 0.3,
+          },
+        });
+
+        map.addLayer({
+          id: 'dropoff-circle-border',
+          type: 'line',
+          source: 'dropoff-circle',
+          paint: {
+            'line-color': '#ef4444',
+            'line-width': 2,
+            'line-opacity': 0.8,
+          },
+        });
+
+        dropoffCircleSourceRef.current = 'dropoff-circle';
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          console.debug('Error adding dropoff circle:', error);
+        }
+      }
+    } else {
+      // Remove dropoff circle if radius is 0 or location is cleared
+      try {
+        if (map.getLayer('dropoff-circle-border')) {
+          map.removeLayer('dropoff-circle-border');
+        }
+        if (map.getLayer('dropoff-circle')) {
+          map.removeLayer('dropoff-circle');
+        }
+        if (map.getSource('dropoff-circle')) {
+          map.removeSource('dropoff-circle');
+        }
+        dropoffCircleSourceRef.current = null;
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          console.debug('Error removing dropoff circle:', error);
+        }
+      }
+    }
+  }, [originLocation, destinationLocation, pickupRadius, dropoffRadius, distanceUnit, isMapLoaded]);
+
   // Clear locations
   const clearOrigin = () => {
     setOriginLocation(null);
@@ -859,6 +1070,21 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
       return;
     }
 
+    if (price < PRICE_MIN) {
+      toast.error(`Price must be at least $${PRICE_MIN.toFixed(2)}`);
+      return;
+    }
+
+    if (price > PRICE_MAX) {
+      toast.error(`Price cannot exceed $${PRICE_MAX.toFixed(2)}`);
+      return;
+    }
+
+    if (pickupRadius < RADIUS_MIN || dropoffRadius < RADIUS_MIN) {
+      toast.error(`Radius values cannot be less than ${RADIUS_MIN}`);
+      return;
+    }
+
     if (!user) {
       toast.error('You must be signed in to offer rides');
       return;
@@ -877,7 +1103,8 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
         if (import.meta.env.DEV) {
           console.error('Error fetching user profile:', profileErrors);
         }
-        toast.error('Unable to verify your account. Please try again.');
+        const errorMessage = profileErrors[0]?.message || 'Unable to verify your account. Please try again.';
+        toast.error(errorMessage);
         setIsSubmitting(false);
         return;
       }
@@ -908,6 +1135,10 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
 
       const departureDateTimeISO = departureDateTime.toISOString();
       
+      // Convert radii to km for storage
+      const pickupRadiusKm = pickupRadius > 0 ? convertToKm(pickupRadius, distanceUnit) : undefined;
+      const dropoffRadiusKm = dropoffRadius > 0 ? convertToKm(dropoffRadius, distanceUnit) : undefined;
+      
       const { data: rideOffer, errors } = await client.models.RideOffer.create({
         hostId: profile.id,
         originLatitude: originLocation.latitude,
@@ -922,13 +1153,17 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
         status: 'available',
         vehicleInfo: vehicleInfo || undefined,
         notes: notes || undefined,
+        pickupRadius: pickupRadiusKm,
+        dropoffRadius: dropoffRadiusKm,
+        price: price,
       });
 
       if (errors) {
         if (import.meta.env.DEV) {
           console.error('Error creating ride offer:', errors);
         }
-        toast.error('Failed to create ride offer. Please try again.');
+        const errorMessage = errors[0]?.message || 'Failed to create ride offer. Please try again.';
+        toast.error(errorMessage);
         setIsSubmitting(false);
         return;
       }
@@ -947,57 +1182,11 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
     }
   };
 
-  // Show verification warning if not verified
+  // Show loading state while checking verification
   if (checkingVerification) {
     return (
       <div className="h-screen flex items-center justify-center">
         <Loader2 className="w-8 h-8 text-primary-600 animate-spin" />
-      </div>
-    );
-  }
-
-  if (!isVerified) {
-    return (
-      <div className="h-screen flex flex-col">
-        <header className="bg-white shadow-sm z-10">
-          <div className="max-w-7xl mx-auto px-4 py-4 flex items-center gap-4">
-            <button
-              onClick={() => setCurrentView('home')}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              aria-label="Back to home"
-            >
-              <ArrowLeft className="w-6 h-6" />
-            </button>
-            <h1 className="text-xl font-bold text-gray-900">Offer a Ride</h1>
-          </div>
-        </header>
-
-        <main className="flex-1 flex items-center justify-center p-4">
-          <div className="max-w-md w-full bg-white rounded-lg shadow-md p-8 text-center">
-            <AlertCircle className="w-16 h-16 text-amber-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">
-              Verification Required
-            </h2>
-            <p className="text-gray-600 mb-6">
-              To offer rides on RideShare.Click, you must be verified as a ride host by RideShare.Click.
-            </p>
-            <p className="text-sm text-gray-500 mb-6">
-              Please contact RideShare.Click to get verified, or check your account profile for verification status.
-            </p>
-            <button
-              onClick={() => setCurrentView('account')}
-              className="w-full bg-primary-600 text-white py-3 px-6 rounded-lg hover:bg-primary-700 transition-colors"
-            >
-              View My Account
-            </button>
-            <button
-              onClick={() => setCurrentView('home')}
-              className="w-full mt-3 bg-gray-200 text-gray-900 py-3 px-6 rounded-lg hover:bg-gray-300 transition-colors"
-            >
-              Back to Home
-            </button>
-          </div>
-        </main>
       </div>
     );
   }
@@ -1015,12 +1204,42 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
             <ArrowLeft className="w-6 h-6" />
           </button>
           <h1 className="text-xl font-bold text-gray-900">Offer a Ride</h1>
-          <div className="ml-auto flex items-center gap-2 text-sm text-green-600">
-            <CheckCircle2 className="w-5 h-5" />
-            <span className="font-medium">Verified Ride Host</span>
-          </div>
+          {isVerified && (
+            <div className="ml-auto flex items-center gap-2 text-sm text-green-600">
+              <CheckCircle2 className="w-5 h-5" />
+              <span className="font-medium">Verified Ride Host</span>
+            </div>
+          )}
         </div>
       </header>
+
+      {/* Verification Warning Banner */}
+      {!isVerified && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-3">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-amber-900">
+                  Verification Required
+                </p>
+                <p className="text-sm text-amber-700 mt-1">
+                  To offer rides on RideShare.Click, you must be verified as a ride host. 
+                  You can fill out the form below, but you'll need to be verified before submitting.
+                </p>
+                <div className="flex gap-3 mt-2">
+                  <button
+                    onClick={() => setCurrentView('account')}
+                    className="text-sm text-amber-900 hover:text-amber-950 font-medium underline"
+                  >
+                    Check verification status in My Account
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Search and Map Container */}
       <div className="flex-1 flex flex-col md:flex-row">
@@ -1135,6 +1354,155 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
               )}
             </div>
 
+            {/* Pickup Radius */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Pickup Zone Radius ({distanceUnit === 'km' ? 'km' : 'miles'})
+              </label>
+              <div className="space-y-2">
+                <input
+                  type="range"
+                  min={RADIUS_MIN}
+                  max={RADIUS_MAX}
+                  step={RADIUS_STEP}
+                  value={pickupRadius}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value) || RADIUS_MIN;
+                    setPickupRadius(Math.min(RADIUS_MAX, Math.max(RADIUS_MIN, val)));
+                  }}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
+                />
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-500">{RADIUS_MIN} {distanceUnit === 'km' ? 'km' : 'mi'}</span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={RADIUS_MIN}
+                      max={RADIUS_MAX}
+                      step={RADIUS_STEP}
+                      value={pickupRadius.toFixed(1)}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || RADIUS_MIN;
+                        setPickupRadius(Math.min(RADIUS_MAX, Math.max(RADIUS_MIN, val)));
+                      }}
+                      className="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                    <span className="text-sm text-gray-700">{distanceUnit === 'km' ? 'km' : 'mi'}</span>
+                  </div>
+                  <span className="text-xs text-gray-500">{RADIUS_MAX} {distanceUnit === 'km' ? 'km' : 'mi'}</span>
+                </div>
+                <p className="text-xs text-gray-500">
+                  Areas within this radius from the pickup location are included in the ride price.
+                </p>
+              </div>
+            </div>
+
+            {/* Dropoff Radius */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Dropoff Zone Radius ({distanceUnit === 'km' ? 'km' : 'miles'})
+              </label>
+              <div className="space-y-2">
+                <input
+                  type="range"
+                  min={RADIUS_MIN}
+                  max={RADIUS_MAX}
+                  step={RADIUS_STEP}
+                  value={dropoffRadius}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value) || RADIUS_MIN;
+                    setDropoffRadius(Math.min(RADIUS_MAX, Math.max(RADIUS_MIN, val)));
+                  }}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-red-600"
+                />
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-500">{RADIUS_MIN} {distanceUnit === 'km' ? 'km' : 'mi'}</span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={RADIUS_MIN}
+                      max={RADIUS_MAX}
+                      step={RADIUS_STEP}
+                      value={dropoffRadius.toFixed(1)}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || RADIUS_MIN;
+                        setDropoffRadius(Math.min(RADIUS_MAX, Math.max(RADIUS_MIN, val)));
+                      }}
+                      className="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                    <span className="text-sm text-gray-700">{distanceUnit === 'km' ? 'km' : 'mi'}</span>
+                  </div>
+                  <span className="text-xs text-gray-500">{RADIUS_MAX} {distanceUnit === 'km' ? 'km' : 'mi'}</span>
+                </div>
+                <p className="text-xs text-gray-500">
+                  Areas within this radius from the dropoff location are included in the ride price.
+                </p>
+              </div>
+            </div>
+
+            {/* Price */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Ride Price (CAD $)
+              </label>
+              <div className="space-y-2">
+                <input
+                  type="range"
+                  min={PRICE_MIN}
+                  max={PRICE_MAX}
+                  step={PRICE_STEP}
+                  value={price}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value) || PRICE_MIN;
+                    const clampedVal = Math.min(PRICE_MAX, Math.max(PRICE_MIN, val));
+                    setPrice(clampedVal);
+                    setPriceError(null);
+                  }}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
+                />
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-500">${PRICE_MIN.toFixed(2)}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-gray-700">$</span>
+                    <input
+                      type="number"
+                      min={PRICE_MIN}
+                      max={PRICE_MAX}
+                      step={PRICE_STEP}
+                      value={price.toFixed(2)}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        if (isNaN(val)) {
+                          setPriceError('Please enter a valid number');
+                          return;
+                        }
+                        if (val < PRICE_MIN) {
+                          setPriceError(`Minimum price is $${PRICE_MIN.toFixed(2)}`);
+                          setPrice(PRICE_MIN);
+                        } else if (val > PRICE_MAX) {
+                          setPriceError(`Maximum price is $${PRICE_MAX.toFixed(2)}`);
+                          setPrice(PRICE_MAX);
+                        } else {
+                          setPriceError(null);
+                          setPrice(val);
+                        }
+                      }}
+                      className={`w-24 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
+                        priceError ? 'border-red-300' : 'border-gray-300'
+                      }`}
+                    />
+                  </div>
+                  <span className="text-xs text-gray-500">${PRICE_MAX.toFixed(2)}</span>
+                </div>
+                {priceError && (
+                  <p className="text-xs text-red-600">{priceError}</p>
+                )}
+                <p className="text-xs text-gray-500">
+                  Minimum price is ${PRICE_MIN.toFixed(2)}. Maximum price is ${PRICE_MAX.toFixed(2)}. Price increments in ${PRICE_STEP.toFixed(2)} steps.
+                </p>
+              </div>
+            </div>
+
             {/* Departure Time */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1195,9 +1563,17 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
 
             {/* Submit Button */}
             <div className="mt-6 pt-6 border-t border-gray-200">
+              {!isVerified && (
+                <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <p className="text-sm text-amber-800">
+                    <strong>Note:</strong> You must be verified as a ride host to submit this offer. 
+                    Please check your account verification status before submitting.
+                  </p>
+                </div>
+              )}
               <button
                 onClick={handleSubmit}
-                disabled={isSubmitting || !originLocation || !destinationLocation || !departureTime}
+                disabled={isSubmitting || !originLocation || !destinationLocation || !departureTime || price < PRICE_MIN || price > PRICE_MAX || !isVerified}
                 className="w-full px-6 py-3 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700 transition-colors shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {isSubmitting ? (
@@ -1205,6 +1581,8 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
                     <Loader2 className="w-5 h-5 animate-spin" />
                     <span>Creating Ride Offer...</span>
                   </>
+                ) : !isVerified ? (
+                  <span>Verification Required to Submit</span>
                 ) : (
                   <span>Create Ride Offer</span>
                 )}

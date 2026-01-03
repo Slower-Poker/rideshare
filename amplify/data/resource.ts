@@ -23,6 +23,7 @@ const schema = a.schema({
       termsAcceptedDate: a.datetime(),
       termsVersion: a.string(),
       verifiedRideHost: a.boolean().default(false),
+      distanceUnit: a.enum(['km', 'miles']),
       // Relationships
       hostedRides: a.hasMany('RideOffer', 'hostId'),
       joinedRides: a.hasMany('RideParticipant', 'riderId'),
@@ -50,6 +51,9 @@ const schema = a.schema({
       status: a.enum(['available', 'matched', 'active', 'completed', 'cancelled']),
       vehicleInfo: a.string(),
       notes: a.string(),
+      pickupRadius: a.float(),
+      dropoffRadius: a.float(),
+      price: a.float().required(),
       // Relationships
       host: a.belongsTo('UserProfile', 'hostId'),
       participants: a.hasMany('RideParticipant', 'rideOfferId'),

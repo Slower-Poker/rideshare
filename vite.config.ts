@@ -67,6 +67,7 @@ export default defineConfig({
     })
   ],
   build: {
+    target: 'baseline-widely-available', // Explicit default for Vite 7
     rollupOptions: {
       output: {
         manualChunks: {
@@ -76,5 +77,14 @@ export default defineConfig({
         }
       }
     }
-  }
+  },
+  optimizeDeps: {
+    include: [
+      'aws-amplify',
+      '@aws-amplify/ui-react',
+      'react',
+      'react-dom',
+      'maplibre-gl'
+    ],
+  },
 });
