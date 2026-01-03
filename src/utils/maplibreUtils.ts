@@ -185,6 +185,9 @@ export function createCircleGeoJSON(center: Location, radiusKm: number): CircleG
   // Earth's radius in kilometers
   const earthRadiusKm = 6371;
   
+  // Store first coordinate to close the polygon
+  let firstCoordinate: [number, number] | null = null;
+  
   for (let i = 0; i <= points; i++) {
     const angle = (i * 360) / points;
     const latRad = (center.latitude * Math.PI) / 180;
@@ -202,15 +205,21 @@ export function createCircleGeoJSON(center: Location, radiusKm: number): CircleG
       Math.cos(radiusKm / earthRadiusKm) - Math.sin(latRad) * Math.sin(lat)
     );
     
-    coordinates.push([
+    const coord: [number, number] = [
       (lng * 180) / Math.PI,
       (lat * 180) / Math.PI,
-    ]);
+    ];
+    
+    if (i === 0) {
+      firstCoordinate = coord;
+    }
+    
+    coordinates.push(coord);
   }
   
-  // Close the polygon
-  if (coordinates.length > 0) {
-    coordinates.push(coordinates[0]);
+  // Close the polygon by adding the first coordinate at the end
+  if (firstCoordinate) {
+    coordinates.push(firstCoordinate);
   }
   
   return {
