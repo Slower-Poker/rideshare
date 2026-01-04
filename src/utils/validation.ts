@@ -31,12 +31,23 @@ export const joinRideSchema = z.object({
   message: z.string().max(300).optional(),
 });
 
+// Coop member number validation
+// Must be an integer between 1 and 9,999,999 (inclusive)
+export const coopMemberNumberSchema = z
+  .number()
+  .int('Coop member number must be an integer')
+  .min(1, 'Coop member number must be at least 1')
+  .max(9999999, 'Coop member number must be less than 10,000,000')
+  .nullable()
+  .optional();
+
 // User profile validation
 export const userProfileSchema = z.object({
   username: z.string().min(3).max(30),
   givenName: z.string().min(1).max(50).optional(),
   familyName: z.string().min(1).max(50).optional(),
   phoneNumber: z.string().regex(/^\+?[1-9]\d{1,14}$/).optional(),
+  coopMemberNumber: coopMemberNumberSchema,
 });
 
 // Rating validation
