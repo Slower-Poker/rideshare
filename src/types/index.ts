@@ -5,9 +5,10 @@ export type UserProfile = Schema['UserProfile']['type'];
 export type RideOffer = Schema['RideOffer']['type'];
 export type RideParticipant = Schema['RideParticipant']['type'];
 export type RideRating = Schema['RideRating']['type'];
+export type RideRequest = Schema['RideRequest']['type'];
 
 // View types for routing
-export type ViewType = 'home' | 'map' | 'activeRide' | 'account' | 'terms' | 'bookRide' | 'bookRideConfirm' | 'offerRide';
+export type ViewType = 'home' | 'map' | 'findARideMap' | 'activeRide' | 'account' | 'terms' | 'bookRide' | 'bookRideDetails' | 'bookRideConfirm' | 'bookaRideRequest' | 'offerRide';
 
 // User types
 export type UserType = 'host' | 'rider' | 'both';

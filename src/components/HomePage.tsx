@@ -14,7 +14,7 @@ export function HomePage({ setCurrentView, user }: SharedProps) {
           
           <nav className="flex items-center gap-4">
             <button
-              onClick={() => setCurrentView('map')}
+              onClick={() => setCurrentView('findARideMap')}
               className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:text-primary-600 transition-colors"
               aria-label="View map of available rides"
             >
@@ -112,8 +112,8 @@ export function HomePage({ setCurrentView, user }: SharedProps) {
               Browse available rides on the map or list view. Request to join rides that match your route.
             </p>
             <button
-              onClick={() => setCurrentView('map')}
-              className="w-full bg-gray-200 text-gray-900 py-3 px-6 rounded-lg hover:bg-gray-300 transition-colors"
+              onClick={() => setCurrentView('findARideMap')}
+              className="w-full bg-primary-600 text-white py-3 px-6 rounded-lg hover:bg-primary-700 transition-colors"
               aria-label="View available rides on the map"
             >
               View Available Rides
