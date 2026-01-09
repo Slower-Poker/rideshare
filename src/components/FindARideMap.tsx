@@ -91,7 +91,6 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userProfileId, setUserProfileId] = useState<string | null>(null);
-  const [cancellingRequestId, setCancellingRequestId] = useState<string | null>(null);
   
   // MapLibre loading states
   const [isScriptLoading, setIsScriptLoading] = useState(false);
@@ -125,8 +124,6 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
       return;
     }
 
-    setCancellingRequestId(requestId);
-
     try {
       const { data, errors } = await client.models.RideRequest.update({
         id: requestId,
@@ -136,7 +133,6 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
       if (errors) {
         console.error('Error cancelling ride request:', errors);
         toast.error('Failed to cancel ride request. Please try again.');
-        setCancellingRequestId(null);
         return;
       }
 
@@ -191,8 +187,6 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
     } catch (err) {
       console.error('Error cancelling ride request:', err);
       toast.error('An error occurred. Please try again.');
-    } finally {
-      setCancellingRequestId(null);
     }
   }, [user]);
 
@@ -206,6 +200,12 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
     // Find the marker data
     const markerData = markersRef.current.find(m => m.rideRequest.id === requestId);
     if (!markerData || !markerData.actualDropoffLocation || !markerData.displayDropoffLocation) {
+      return;
+    }
+
+    // Type guard: ensure displayDropoffLocation is not null
+    const displayDropoffLocation = markerData.displayDropoffLocation;
+    if (!displayDropoffLocation) {
       return;
     }
 
@@ -273,7 +273,7 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
     `;
 
     const dropoffMarker = new maplibregl.Marker({ element: dropoffEl })
-      .setLngLat(locationToCoordinates(markerData.displayDropoffLocation))
+      .setLngLat(locationToCoordinates(displayDropoffLocation))
       .setPopup(
         new maplibregl.Popup({ offset: 25 })
           .setHTML(`
@@ -293,7 +293,7 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
     routeAbortControllerRef.current = abortController;
 
     const pickupCoords = locationToCoordinates(markerData.displayPickupLocation);
-    const dropoffCoords = locationToCoordinates(markerData.displayDropoffLocation);
+    const dropoffCoords = locationToCoordinates(displayDropoffLocation);
     
     const coordinates = `${pickupCoords[0]},${pickupCoords[1]};${dropoffCoords[0]},${dropoffCoords[1]}`;
     const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=full&geometries=geojson`;
@@ -368,7 +368,7 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
           });
 
           // Fit bounds to show both pickup and dropoff
-          const bounds = calculateBounds([markerData.displayPickupLocation, markerData.displayDropoffLocation]);
+          const bounds = calculateBounds([markerData.displayPickupLocation, displayDropoffLocation]);
           if (bounds) {
             try {
               const [[minLng, minLat], [maxLng, maxLat]] = bounds;
@@ -466,7 +466,7 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
           return;
         }
 
-        if (profiles && profiles.length > 0) {
+        if (profiles && profiles.length > 0 && profiles[0]) {
           setUserProfileId(profiles[0].id);
         }
       } catch (err) {
