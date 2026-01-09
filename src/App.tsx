@@ -50,25 +50,33 @@ function App() {
 
   const { termsAccepted, loading: termsLoading, acceptTerms } = useTermsGate(user);
 
+  // Track previous view to distinguish auto-redirects from user-initiated navigation
+  const previousViewRef = useRef<ViewType | null>(null);
+  
   // Persist current view to sessionStorage whenever it changes
-  // BUT: Don't persist 'terms' view if it was auto-redirected (to prevent it from persisting)
+  // Store previous view before navigating to terms for proper back navigation
   useEffect(() => {
     // Only persist if not terms, or if user explicitly navigated to terms
-    // We'll track if terms was auto-redirected vs user-initiated
     if (currentView !== 'terms') {
+      // Normal view - persist it
       sessionStorage.setItem(VIEW_STORAGE_KEY, currentView);
+      previousViewRef.current = currentView;
     } else {
-      // Check if this is an auto-redirect by checking if previous view was home
-      const previousView = sessionStorage.getItem(VIEW_STORAGE_KEY);
-      if (previousView && previousView !== 'terms') {
-        // User was on another page, don't persist terms (it's an auto-redirect)
-        // This allows refresh to go back to the previous page
-      } else {
-        // User explicitly navigated to terms, persist it
-        sessionStorage.setItem(VIEW_STORAGE_KEY, currentView);
+      // Navigating to terms - preserve the previous view in a separate key for back navigation
+      const stored = sessionStorage.getItem(VIEW_STORAGE_KEY);
+      if (stored && stored !== 'terms') {
+        // Store previous view for back navigation
+        sessionStorage.setItem('rideshare_previous_view', stored);
+        previousViewRef.current = stored as ViewType;
+      }
+      // For user-initiated navigation to terms, we can optionally persist it
+      // but we'll let the TermsPage decide based on requireAcceptance
+      if (!user || termsAccepted) {
+        // User is viewing terms voluntarily, persist for back button
+        // The previous view is already stored above
       }
     }
-  }, [currentView]);
+  }, [currentView, user, termsAccepted]);
 
   const checkAuthStatus = useCallback(async () => {
     try {
@@ -95,10 +103,15 @@ function App() {
     checkAuthStatus();
   }, [checkAuthStatus]);
 
-  // Clear 'terms' from sessionStorage on mount to prevent auto-redirect loop
+  // Only clear 'terms' from sessionStorage on mount if it was likely an auto-redirect
+  // This prevents auto-redirect loops while allowing explicit navigation
   useEffect(() => {
     const stored = sessionStorage.getItem(VIEW_STORAGE_KEY);
-    if (stored === 'terms') {
+    // Don't clear on initial mount if we're restoring from storage
+    // The initial state handler already handles this
+    if (stored === 'terms' && !wasRestored.current) {
+      // Fresh start with 'terms' stored - likely leftover from previous session
+      // Clear it to start fresh
       sessionStorage.removeItem(VIEW_STORAGE_KEY);
     }
   }, []);
