@@ -30,6 +30,7 @@ const schema = a.schema({
       // Relationships
       hostedRides: a.hasMany('RideOffer', 'hostId'),
       joinedRides: a.hasMany('RideParticipant', 'riderId'),
+      rideRequests: a.hasMany('RideRequest', 'requesterId'),
     })
     .authorization((allow) => [
       // Authenticated users can read all profiles and create their own
@@ -105,6 +106,33 @@ const schema = a.schema({
     })
     .authorization((allow) => [
       allow.authenticated().to(['read', 'create']),
+    ]),
+
+  // Ride Request Model (for riders requesting rides)
+  RideRequest: a
+    .model({
+      requesterId: a.id().required(),
+      pickupLatitude: a.float().required(),
+      pickupLongitude: a.float().required(),
+      pickupAddress: a.string(),
+      dropoffLatitude: a.float().required(),
+      dropoffLongitude: a.float().required(),
+      dropoffAddress: a.string(),
+      requestedTime: a.datetime().required(),
+      numberOfSeats: a.integer().required(),
+      maximumAmount: a.float().required(),
+      notes: a.string(),
+      status: a.enum(['pending', 'matched', 'completed', 'cancelled']),
+      createdAt: a.datetime().required(),
+      // Relationships
+      requester: a.belongsTo('UserProfile', 'requesterId'),
+    })
+    .authorization((allow) => [
+      // Allow guests to read ride requests
+      allow.guest().to(['read']),
+      // Authenticated users can read all requests and create new ones
+      allow.authenticated().to(['read', 'create', 'update', 'delete']),
+      // Note: Application logic should enforce that only the requester can update/delete their own requests
     ]),
 });
 

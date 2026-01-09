@@ -1154,8 +1154,8 @@ export function BookaRide({ setCurrentView }: SharedProps) {
     };
     sessionStorage.setItem('rideshare_booking_data', JSON.stringify(bookingData));
     
-    // Navigate to confirmation page
-    setCurrentView('bookRideConfirm');
+    // Navigate to details page (step 2)
+    setCurrentView('bookRideDetails');
   };
 
   return (
@@ -1332,7 +1332,7 @@ export function BookaRide({ setCurrentView }: SharedProps) {
                   <ArrowLeft className="w-4 h-4 rotate-180" />
                 </button>
                 <p className="text-xs text-gray-500 text-center mt-1.5">
-                  Review and confirm your ride details
+                  Set your ride preferences
                 </p>
               </div>
             )}
