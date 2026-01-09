@@ -49,5 +49,6 @@
   },
   "engines": {
     "node": ">=20.19.0"
-  }
+  },
+  "license": "GPL-3.0-or-later"
 }

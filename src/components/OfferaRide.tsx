@@ -120,7 +120,8 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
         }
 
         const profile = profiles?.[0];
-        setIsVerified(profile?.verifiedRideHost === true);
+        // Check if user has a coop member number (required for offering rides)
+        setIsVerified(profile?.coopMemberNumber !== null && profile?.coopMemberNumber !== undefined);
         
         // Set distance unit from profile with validation, default to 'km'
         if (profile?.distanceUnit) {
@@ -1051,7 +1052,7 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
   // Handle form submission
   const handleSubmit = async () => {
     if (!isVerified) {
-      toast.error('You must be a verified ride host to offer rides');
+      toast.error('You must be a coop member to offer rides. Please add your coop member number in Account settings.');
       return;
     }
 
@@ -1120,6 +1121,14 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
       if (!profile || !profile.id) {
         toast.error('User profile is invalid. Please contact support.');
         setIsSubmitting(false);
+        return;
+      }
+
+      // Validate coop member number is present (required for offering rides)
+      if (!profile.coopMemberNumber || profile.coopMemberNumber === null || profile.coopMemberNumber === undefined) {
+        toast.error('You must be a coop member to offer rides. Please add your coop member number in Account settings.');
+        setIsSubmitting(false);
+        setCurrentView('account');
         return;
       }
 
@@ -1207,7 +1216,7 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
           {isVerified && (
             <div className="ml-auto flex items-center gap-2 text-sm text-green-600">
               <CheckCircle2 className="w-5 h-5" />
-              <span className="font-medium">Verified Ride Host</span>
+              <span className="font-medium">Coop Member</span>
             </div>
           )}
         </div>
@@ -1221,18 +1230,18 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
               <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
               <div className="flex-1">
                 <p className="text-sm font-medium text-amber-900">
-                  Verification Required
+                  Coop Member Number Required
                 </p>
                 <p className="text-sm text-amber-700 mt-1">
-                  To offer rides on RideShare.Click, you must be verified as a ride host. 
-                  You can fill out the form below, but you'll need to be verified before submitting.
+                  To offer rides on RideShare.Click, you must be a coop member with a valid member number. 
+                  You can fill out the form below, but you'll need to add your coop member number before submitting.
                 </p>
                 <div className="flex gap-3 mt-2">
                   <button
                     onClick={() => setCurrentView('account')}
                     className="text-sm text-amber-900 hover:text-amber-950 font-medium underline"
                   >
-                    Check verification status in My Account
+                    Add coop member number in My Account
                   </button>
                 </div>
               </div>
