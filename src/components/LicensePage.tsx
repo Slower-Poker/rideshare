@@ -51,7 +51,7 @@ export function LicensePage({ setCurrentView }: SharedProps) {
             </h2>
             <p className="text-gray-600 mb-1">Version 3, 29 June 2007</p>
             <p className="text-sm text-gray-500">
-              Copyright (C) 2024 Rideshare.Click
+              Copyright (C) 2026 Rideshare.Click
             </p>
           </div>
 
@@ -260,7 +260,7 @@ export function LicensePage({ setCurrentView }: SharedProps) {
 
             <div className="text-sm text-gray-500 mt-8 pt-6 border-t border-gray-200">
               <p><strong>License Version:</strong> GNU General Public License v3.0</p>
-              <p><strong>Copyright:</strong> (C) 2024 Rideshare.Click</p>
+              <p><strong>Copyright:</strong> (C) 2026 Rideshare.Click</p>
               <p className="mt-2">
                 This program is free software licensed under the GNU GPL v3.0. See the full
                 license text at{' '}
