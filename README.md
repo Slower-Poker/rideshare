@@ -206,7 +206,7 @@ We welcome contributions! This is a cooperative project and community input is v
 
 ## License
 
-This project is open source and available under the [MIT License](LICENSE).
+This project is open source and available under the [GNU General Public License v3.0](LICENSE) (GPL-3.0-or-later).
 
 ## Support
 
