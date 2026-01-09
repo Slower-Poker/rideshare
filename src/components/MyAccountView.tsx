@@ -494,12 +494,21 @@ function AccountContent({
           <h2 className="text-2xl font-bold text-gray-900">Legal</h2>
         </div>
         <div className="space-y-3">
-          <button
-            onClick={() => setCurrentView('terms')}
-            className="text-primary-600 hover:text-primary-700 hover:underline text-left"
-          >
-            Terms of Service
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setCurrentView('terms')}
+              className="text-primary-600 hover:text-primary-700 hover:underline text-left"
+            >
+              Terms of Service
+            </button>
+            <span className="text-gray-400">|</span>
+            <button
+              onClick={() => setCurrentView('license')}
+              className="text-primary-600 hover:text-primary-700 hover:underline text-left"
+            >
+              License
+            </button>
+          </div>
           <p className="text-sm text-gray-500">
             Privacy policy and other legal documents coming soon...
           </p>

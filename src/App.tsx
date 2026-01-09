@@ -11,6 +11,7 @@ import { HomePage } from './components/HomePage';
 import { RideMapView } from './components/RideMapView';
 import { MyAccountView } from './components/MyAccountView';
 import { TermsPage } from './components/TermsPage';
+import { LicensePage } from './components/LicensePage';
 import { BookaRide } from './components/BookaRide';
 import { BookRideDetails } from './components/BookRideDetails';
 import { BookRideConfirm } from './components/BookRideConfirm';
@@ -36,13 +37,13 @@ function App() {
       return 'home';
     }
     const stored = sessionStorage.getItem(VIEW_STORAGE_KEY);
-    // Don't restore 'terms' view - always start at home to avoid auto-redirect loop
+    // Don't restore 'terms' or 'license' view - always start at home to avoid auto-redirect loop
     if (stored && ['home', 'map', 'findARideMap', 'account', 'activeRide', 'bookRide', 'bookRideDetails', 'bookRideConfirm', 'bookaRideRequest', 'offerRide'].includes(stored)) {
       wasRestored.current = true; // We restored from storage = page refresh
       return stored as ViewType;
     }
-    // If stored is 'terms' or doesn't exist, default to home
-    wasRestored.current = stored === 'terms' ? false : (stored !== null);
+    // If stored is 'terms' or 'license' or doesn't exist, default to home
+    wasRestored.current = (stored === 'terms' || stored === 'license') ? false : (stored !== null);
     return 'home';
   });
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -50,25 +51,31 @@ function App() {
 
   const { termsAccepted, loading: termsLoading, acceptTerms } = useTermsGate(user);
 
+  // Track previous view to distinguish auto-redirects from user-initiated navigation
+  const previousViewRef = useRef<ViewType | null>(null);
+  
   // Persist current view to sessionStorage whenever it changes
-  // BUT: Don't persist 'terms' view if it was auto-redirected (to prevent it from persisting)
+  // Store previous view before navigating to terms for proper back navigation
   useEffect(() => {
-    // Only persist if not terms, or if user explicitly navigated to terms
-    // We'll track if terms was auto-redirected vs user-initiated
-    if (currentView !== 'terms') {
+    // Only persist if not terms/license, or if user explicitly navigated to them
+    if (currentView !== 'terms' && currentView !== 'license') {
+      // Normal view - persist it
       sessionStorage.setItem(VIEW_STORAGE_KEY, currentView);
+      previousViewRef.current = currentView;
     } else {
-      // Check if this is an auto-redirect by checking if previous view was home
-      const previousView = sessionStorage.getItem(VIEW_STORAGE_KEY);
-      if (previousView && previousView !== 'terms') {
-        // User was on another page, don't persist terms (it's an auto-redirect)
-        // This allows refresh to go back to the previous page
-      } else {
-        // User explicitly navigated to terms, persist it
-        sessionStorage.setItem(VIEW_STORAGE_KEY, currentView);
+      // Navigating to terms or license - preserve the previous view in a separate key for back navigation
+      const stored = sessionStorage.getItem(VIEW_STORAGE_KEY);
+      if (stored && stored !== 'terms' && stored !== 'license') {
+        // Store previous view for back navigation
+        sessionStorage.setItem('rideshare_previous_view', stored);
+        previousViewRef.current = stored as ViewType;
+      }
+      // For user-initiated navigation to terms/license, the previous view is already stored above
+      if (currentView === 'terms' && (!user || termsAccepted)) {
+        // User is viewing terms voluntarily, previous view already stored
       }
     }
-  }, [currentView]);
+  }, [currentView, user, termsAccepted]);
 
   const checkAuthStatus = useCallback(async () => {
     try {
@@ -95,10 +102,15 @@ function App() {
     checkAuthStatus();
   }, [checkAuthStatus]);
 
-  // Clear 'terms' from sessionStorage on mount to prevent auto-redirect loop
+  // Only clear 'terms' or 'license' from sessionStorage on mount if it was likely an auto-redirect
+  // This prevents auto-redirect loops while allowing explicit navigation
   useEffect(() => {
     const stored = sessionStorage.getItem(VIEW_STORAGE_KEY);
-    if (stored === 'terms') {
+    // Don't clear on initial mount if we're restoring from storage
+    // The initial state handler already handles this
+    if ((stored === 'terms' || stored === 'license') && !wasRestored.current) {
+      // Fresh start with 'terms' or 'license' stored - likely leftover from previous session
+      // Clear it to start fresh
       sessionStorage.removeItem(VIEW_STORAGE_KEY);
     }
   }, []);
@@ -160,6 +172,8 @@ function App() {
             requireAcceptance={user !== null && !termsAccepted}
           />
         );
+      case 'license':
+        return <LicensePage {...sharedProps} />;
       default:
         return <HomePage {...sharedProps} />;
     }
