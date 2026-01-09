@@ -166,12 +166,21 @@ export function HomePage({ setCurrentView, user }: SharedProps) {
           <p className="mb-2">
             RideShare.Click - Community Ride Sharing Platform
           </p>
-          <button
-            onClick={() => setCurrentView('terms')}
-            className="text-primary-600 hover:underline"
-          >
-            Terms of Service
-          </button>
+          <div className="flex items-center justify-center gap-4">
+            <button
+              onClick={() => setCurrentView('terms')}
+              className="text-primary-600 hover:underline"
+            >
+              Terms of Service
+            </button>
+            <span className="text-gray-400">|</span>
+            <button
+              onClick={() => setCurrentView('license')}
+              className="text-primary-600 hover:underline"
+            >
+              License
+            </button>
+          </div>
         </div>
       </footer>
     </div>
