@@ -24,9 +24,8 @@ const schema = a.schema({
       termsVersion: a.string(),
       verifiedRideHost: a.boolean().default(false),
       distanceUnit: a.enum(['km', 'miles']),
-      // Coop member number: required for users who offer/find rides, optional for riders who only book rides
-      // Must be unique integer between 1 and 9,999,999
-      coopMemberNumber: a.integer(),
+      // Coop member number: assigned by the system, unique 8-character code (displayed like 8943-2923)
+      coopMemberNumber: a.string(),
       // Relationships
       hostedRides: a.hasMany('RideOffer', 'hostId'),
       joinedRides: a.hasMany('RideParticipant', 'riderId'),

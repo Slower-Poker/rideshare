@@ -1124,9 +1124,9 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
         return;
       }
 
-      // Validate coop member number is present (required for offering rides)
+      // Coop member number is required for offering rides and assigned automatically
       if (!profile.coopMemberNumber || profile.coopMemberNumber === null || profile.coopMemberNumber === undefined) {
-        toast.error('You must be a coop member to offer rides. Please add your coop member number in Account settings.');
+        toast.error('Your coop member number is still being assigned. Please try again in a moment.');
         setIsSubmitting(false);
         setCurrentView('account');
         return;
