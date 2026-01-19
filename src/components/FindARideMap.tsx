@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, Loader2, MapPin } from 'lucide-react';
-import { generateClient } from 'aws-amplify/data';
+import { client } from '../client';
 import type { Schema } from '../../amplify/data/resource';
 import type { SharedProps, Location, RideRequest } from '../types';
 import { loadMapLibre, isMapLibreLoaded, getMapLibreInstance } from '../utils/maplibreLoader';
@@ -14,8 +14,6 @@ import {
   calculateBounds,
 } from '../utils/maplibreUtils';
 import { toast } from '../utils/toast';
-
-const client = generateClient<Schema>();
 
 // MapLibre marker types
 type MapLibreMap = any;

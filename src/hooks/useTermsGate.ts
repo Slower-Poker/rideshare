@@ -1,10 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { generateClient } from 'aws-amplify/data';
+import { client } from '../client';
 import type { Schema } from '../../amplify/data/resource';
 import type { AuthUser } from '../types';
 import { findUniqueCoopMemberNumber, normalizeCoopMemberNumber } from '../utils/coopMemberNumber';
-
-const client = generateClient<Schema>();
 
 const CURRENT_TERMS_VERSION = '1.0.0';
 

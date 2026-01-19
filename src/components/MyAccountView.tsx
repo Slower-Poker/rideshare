@@ -2,14 +2,12 @@ import { Authenticator, useAuthenticator } from '@aws-amplify/ui-react';
 import { signOut } from 'aws-amplify/auth';
 import { ArrowLeft, LogOut, User, Settings, Wallet, Activity, Info, FileText, CheckCircle2 } from 'lucide-react';
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { generateClient } from 'aws-amplify/data';
+import { client } from '../client';
 import type { Schema } from '../../amplify/data/resource';
 import type { SharedProps } from '../types';
 import { toast } from '../utils/toast';
 import { formatCoopMemberNumber } from '../utils/coopMemberNumber';
 import '@aws-amplify/ui-react/styles.css';
-
-const client = generateClient<Schema>();
 
 interface MyAccountViewProps extends SharedProps {
   onAuthChange: () => void;

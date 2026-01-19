@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, Search, MapPin, X, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { generateClient } from 'aws-amplify/data';
+import { client } from '../client';
 import type { SharedProps, Location } from '../types';
 import type { Schema } from '../../amplify/data/resource';
 import { loadMapLibre, isMapLibreLoaded, getMapLibreInstance } from '../utils/maplibreLoader';
@@ -18,8 +18,6 @@ import {
 } from '../utils/maplibreUtils';
 import { toast } from '../utils/toast';
 import type { MapLibreMap, MapLibreMarker } from '../types/maplibre';
-
-const client = generateClient<Schema>();
 
 // Nominatim API endpoint for OSM geocoding
 const NOMINATIM_API = 'https://nominatim.openstreetmap.org/search';
