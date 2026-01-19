@@ -106,7 +106,8 @@ export function RidePlannerChat({ setCurrentView, user }: SharedProps) {
       if (data) {
         // Check for error in response (Lambda may return error in data field)
         if ('error' in data && data.error) {
-          throw new Error(data.error);
+          const errorMessage = typeof data.error === 'string' ? data.error : String(data.error);
+          throw new Error(errorMessage);
         }
 
         // Check if response is empty

@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, Loader2, MapPin } from 'lucide-react';
 import { client } from '../client';
-import type { Schema } from '../../amplify/data/resource';
 import type { SharedProps, Location, RideRequest } from '../types';
 import { loadMapLibre, isMapLibreLoaded, getMapLibreInstance } from '../utils/maplibreLoader';
 import {

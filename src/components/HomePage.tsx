@@ -1,4 +1,4 @@
-import { Car, Map, User, MessageSquare } from 'lucide-react';
+import { Car, Map, User } from 'lucide-react';
 import type { SharedProps } from '../types';
 
 export function HomePage({ setCurrentView, user }: SharedProps) {

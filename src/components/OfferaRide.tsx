@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, Search, MapPin, X, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { client } from '../client';
 import type { SharedProps, Location } from '../types';
-import type { Schema } from '../../amplify/data/resource';
 import { loadMapLibre, isMapLibreLoaded, getMapLibreInstance } from '../utils/maplibreLoader';
 import {
   DEFAULT_CENTER,

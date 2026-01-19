@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, MapPin, Clock, Users, DollarSign, FileText, CheckCircle } from 'lucide-react';
 import { client } from '../client';
-import type { Schema } from '../../amplify/data/resource';
 import type { SharedProps, Location } from '../types';
 import { toast } from '../utils/toast';
 
