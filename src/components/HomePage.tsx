@@ -119,6 +119,30 @@ export function HomePage({ setCurrentView, user }: SharedProps) {
               View Available Rides
             </button>
           </div>
+
+          <div className="bg-white rounded-lg shadow-md p-8 hover:shadow-lg transition-shadow">
+            <h3 className="text-2xl font-bold text-gray-900 mb-4">
+              Chat with AI Assistant
+            </h3>
+            <p id="ai-chat-description" className="text-gray-600 mb-6">
+              Get help planning your ride with our AI assistant. Ask questions about booking, 
+              offering, or finding rides, and get personalized guidance.
+            </p>
+            <button
+              onClick={() => {
+                if (user) {
+                  setCurrentView('ridePlannerChat');
+                } else {
+                  setCurrentView('account');
+                }
+              }}
+              className="w-full bg-primary-600 text-white py-3 px-6 rounded-lg hover:bg-primary-700 transition-colors"
+              aria-label="Open AI ride planner chat"
+              aria-describedby="ai-chat-description"
+            >
+              {user ? 'Start Chat' : 'Sign In to Chat'}
+            </button>
+          </div>
         </div>
 
         {/* Features */}

@@ -18,6 +18,7 @@ import { BookRideConfirm } from './components/BookRideConfirm';
 import { BookaRideRequest } from './components/BookaRideRequest';
 import { FindARideMap } from './components/FindARideMap';
 import { OfferaRide } from './components/OfferaRide';
+import { RidePlannerChat } from './components/RidePlannerChat';
 import 'react-toastify/dist/ReactToastify.css';
 import './index.css';
 
@@ -38,7 +39,7 @@ function App() {
     }
     const stored = sessionStorage.getItem(VIEW_STORAGE_KEY);
     // Don't restore 'terms' or 'license' view - always start at home to avoid auto-redirect loop
-    if (stored && ['home', 'map', 'findARideMap', 'account', 'activeRide', 'bookRide', 'bookRideDetails', 'bookRideConfirm', 'bookaRideRequest', 'offerRide'].includes(stored)) {
+    if (stored && ['home', 'map', 'findARideMap', 'account', 'activeRide', 'bookRide', 'bookRideDetails', 'bookRideConfirm', 'bookaRideRequest', 'offerRide', 'ridePlannerChat'].includes(stored)) {
       wasRestored.current = true; // We restored from storage = page refresh
       return stored as ViewType;
     }
@@ -115,6 +116,13 @@ function App() {
     }
   }, []);
 
+  // Handle authentication redirects for protected views
+  useEffect(() => {
+    if (currentView === 'ridePlannerChat' && !user) {
+      setCurrentView('account');
+    }
+  }, [currentView, user, setCurrentView]);
+
   // Show terms page if user hasn't accepted current version
   // Only redirect on fresh navigation, not on page refresh
   // IMPORTANT: Don't auto-redirect to terms - let user see home page
@@ -162,6 +170,8 @@ function App() {
         return <BookaRideRequest {...sharedProps} />;
       case 'offerRide':
         return <OfferaRide {...sharedProps} />;
+      case 'ridePlannerChat':
+        return <RidePlannerChat {...sharedProps} />;
       case 'account':
         return <MyAccountView {...sharedProps} onAuthChange={checkAuthStatus} />;
       case 'terms':

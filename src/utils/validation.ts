@@ -32,12 +32,10 @@ export const joinRideSchema = z.object({
 });
 
 // Coop member number validation
-// Must be an integer between 1 and 9,999,999 (inclusive)
+// Must be an 8-character alphanumeric string (stored without dashes)
 export const coopMemberNumberSchema = z
-  .number()
-  .int('Coop member number must be an integer')
-  .min(1, 'Coop member number must be at least 1')
-  .max(9999999, 'Coop member number must be less than 10,000,000')
+  .string()
+  .regex(/^[A-Z0-9]{8}$/, 'Coop member number must be 8 alphanumeric characters')
   .nullable()
   .optional();
 

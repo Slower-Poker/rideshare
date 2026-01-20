@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, MapPin, Clock, Users, DollarSign, FileText, Loader2 } from 'lucide-react';
-import { generateClient } from 'aws-amplify/data';
+import { client } from '../client';
 import type { Schema } from '../../amplify/data/resource';
 import type { SharedProps } from '../types';
 import { toast } from '../utils/toast';
-
-const client = generateClient<Schema>();
 
 type RideRequest = Schema['RideRequest']['type'];
 

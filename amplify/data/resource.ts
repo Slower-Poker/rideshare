@@ -1,4 +1,5 @@
 import { type ClientSchema, a, defineData } from '@aws-amplify/backend';
+import { novaAgentProxy } from '../functions/novaAgentProxy/resource';
 
 /*
  * RideShare.Click Data Schema
@@ -24,9 +25,8 @@ const schema = a.schema({
       termsVersion: a.string(),
       verifiedRideHost: a.boolean().default(false),
       distanceUnit: a.enum(['km', 'miles']),
-      // Coop member number: required for users who offer/find rides, optional for riders who only book rides
-      // Must be unique integer between 1 and 9,999,999
-      coopMemberNumber: a.integer(),
+      // Coop member number: assigned by the system, unique 8-character code (displayed like 8943-2923)
+      coopMemberNumber: a.string(),
       // Relationships
       hostedRides: a.hasMany('RideOffer', 'hostId'),
       joinedRides: a.hasMany('RideParticipant', 'riderId'),
@@ -134,6 +134,24 @@ const schema = a.schema({
       allow.authenticated().to(['read', 'create', 'update', 'delete']),
       // Note: Application logic should enforce that only the requester can update/delete their own requests
     ]),
+
+  // AI Conversation Route for Nova Agent
+  // Custom query that proxies to Nova Agent API via Lambda function
+  // Note: The function reference will be resolved in backend.ts
+  ChatRidePlannerResponse: a.customType({
+    response: a.string(),
+    conversationId: a.string(),
+  }),
+
+  chatRidePlanner: a
+    .query()
+    .arguments({
+      message: a.string().required(),
+      conversationId: a.string(),
+    })
+    .returns(a.ref('ChatRidePlannerResponse'))
+    .handler(a.handler.function(novaAgentProxy))
+    .authorization((allow) => allow.authenticated()),
 });
 
 export type Schema = ClientSchema<typeof schema>;

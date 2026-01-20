@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, Search, MapPin, X, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { generateClient } from 'aws-amplify/data';
+import { client } from '../client';
 import type { SharedProps, Location } from '../types';
-import type { Schema } from '../../amplify/data/resource';
 import { loadMapLibre, isMapLibreLoaded, getMapLibreInstance } from '../utils/maplibreLoader';
 import {
   DEFAULT_CENTER,
@@ -18,8 +17,6 @@ import {
 } from '../utils/maplibreUtils';
 import { toast } from '../utils/toast';
 import type { MapLibreMap, MapLibreMarker } from '../types/maplibre';
-
-const client = generateClient<Schema>();
 
 // Nominatim API endpoint for OSM geocoding
 const NOMINATIM_API = 'https://nominatim.openstreetmap.org/search';
@@ -1124,9 +1121,9 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
         return;
       }
 
-      // Validate coop member number is present (required for offering rides)
+      // Coop member number is required for offering rides and assigned automatically
       if (!profile.coopMemberNumber || profile.coopMemberNumber === null || profile.coopMemberNumber === undefined) {
-        toast.error('You must be a coop member to offer rides. Please add your coop member number in Account settings.');
+        toast.error('Your coop member number is still being assigned. Please try again in a moment.');
         setIsSubmitting(false);
         setCurrentView('account');
         return;

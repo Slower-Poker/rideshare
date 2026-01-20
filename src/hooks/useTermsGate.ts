@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { generateClient } from 'aws-amplify/data';
+import { client } from '../client';
 import type { Schema } from '../../amplify/data/resource';
 import type { AuthUser } from '../types';
-
-const client = generateClient<Schema>();
+import { findUniqueCoopMemberNumber, normalizeCoopMemberNumber } from '../utils/coopMemberNumber';
 
 const CURRENT_TERMS_VERSION = '1.0.0';
 
@@ -15,6 +14,68 @@ export function useTermsGate(user: AuthUser | null) {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState<Schema['UserProfile']['type'] | null>(null);
+
+  const getUniqueCoopMemberNumber = useCallback(async () => {
+    return findUniqueCoopMemberNumber(async (candidate) => {
+      const { data: profiles, errors } = await client.models.UserProfile.list({
+        filter: { coopMemberNumber: { eq: candidate } },
+        limit: 1,
+      });
+
+      if (errors) {
+        if (import.meta.env.DEV) {
+          console.error('Error checking coop member number uniqueness:', errors);
+        }
+        throw new Error('Unable to verify coop member number uniqueness.');
+      }
+
+      return !profiles || profiles.length === 0;
+    });
+  }, []);
+
+  const ensureCoopMemberNumber = useCallback(async (profile: Schema['UserProfile']['type']) => {
+    const normalized = normalizeCoopMemberNumber(profile.coopMemberNumber);
+    if (normalized && normalized.length === 8) {
+      if (normalized !== profile.coopMemberNumber) {
+        try {
+          const { data, errors } = await client.models.UserProfile.update({
+            id: profile.id,
+            coopMemberNumber: normalized,
+          });
+          if (!errors && data) {
+            return data as Schema['UserProfile']['type'];
+          }
+        } catch (error) {
+          if (import.meta.env.DEV) {
+            console.error('Error normalizing coop member number:', error);
+          }
+        }
+      }
+      return profile;
+    }
+
+    try {
+      const newNumber = await getUniqueCoopMemberNumber();
+      const { data, errors } = await client.models.UserProfile.update({
+        id: profile.id,
+        coopMemberNumber: newNumber,
+      });
+
+      if (errors) {
+        if (import.meta.env.DEV) {
+          console.error('Error assigning coop member number:', errors);
+        }
+        return profile;
+      }
+
+      return (data as Schema['UserProfile']['type']) || profile;
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error('Error assigning coop member number:', error);
+      }
+      return profile;
+    }
+  }, [getUniqueCoopMemberNumber]);
 
   const checkTermsAcceptance = useCallback(async () => {
     if (!user) {
@@ -41,22 +102,25 @@ export function useTermsGate(user: AuthUser | null) {
 
       const profile = profiles?.[0];
       if (profile) {
-        setUserProfile(profile as Schema['UserProfile']['type']);
+        const ensuredProfile = await ensureCoopMemberNumber(profile as Schema['UserProfile']['type']);
+        setUserProfile(ensuredProfile);
         
         // Check if terms are accepted and version is current
         const accepted = 
-          profile.termsAccepted === true && 
-          profile.termsVersion === CURRENT_TERMS_VERSION;
+          ensuredProfile.termsAccepted === true && 
+          ensuredProfile.termsVersion === CURRENT_TERMS_VERSION;
         
         setTermsAccepted(accepted);
       } else {
         // Create user profile if it doesn't exist
         try {
+          const coopMemberNumber = await getUniqueCoopMemberNumber();
           const { data: newProfile, errors: createErrors } = await client.models.UserProfile.create({
             userId: user.userId,
             email: user.email,
             username: user.username,
             termsAccepted: false,
+            coopMemberNumber,
           });
           
           if (createErrors) {
@@ -108,6 +172,7 @@ export function useTermsGate(user: AuthUser | null) {
     // If profile doesn't exist, create it first
     if (!userProfile) {
       try {
+        const coopMemberNumber = await getUniqueCoopMemberNumber();
         const { data: newProfile, errors: createErrors } = await client.models.UserProfile.create({
           userId: user.userId,
           email: user.email,
@@ -115,6 +180,7 @@ export function useTermsGate(user: AuthUser | null) {
           termsAccepted: true,
           termsVersion: CURRENT_TERMS_VERSION,
           termsAcceptedDate: new Date().toISOString(),
+          coopMemberNumber,
         });
 
         if (createErrors) {
