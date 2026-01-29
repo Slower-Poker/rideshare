@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, MapPin, Clock, Users, DollarSign, FileText, CheckCircle } from 'lucide-react';
 import { client } from '../client';
+import type { Schema } from '../../amplify/data/resource';
 import type { SharedProps, Location } from '../types';
 import { toast } from '../utils/toast';
 
@@ -118,8 +119,9 @@ export function BookRideConfirm({ setCurrentView, user }: SharedProps) {
 
       const requestedTimeISO = requestedDateTime.toISOString();
       
-      // Create ride request
-      const { data: rideRequest, errors } = await client.models.RideRequest.create({
+      // Create ride request (TS2590: Amplify generated union too complex; result typed explicitly)
+      // @ts-expect-error TS2590 - Amplify Schema return type is too complex to represent
+      const result = await client.models.RideRequest.create({
         requesterId: profile.id,
         pickupLatitude: bookingData.pickup.latitude,
         pickupLongitude: bookingData.pickup.longitude,
@@ -133,10 +135,13 @@ export function BookRideConfirm({ setCurrentView, user }: SharedProps) {
         notes: bookingData.notes || undefined,
         status: 'pending',
         createdAt: new Date().toISOString(),
-      });
+      }) as { data?: Schema['RideRequest']['type']; errors?: unknown[] };
+      const { data: rideRequest, errors } = result;
 
       if (errors) {
-        console.error('Error creating ride request:', errors);
+        if (import.meta.env.DEV) {
+          console.error('Error creating ride request:', errors);
+        }
         toast.error('Failed to create ride request. Please try again.');
         setSaving(false);
         return;

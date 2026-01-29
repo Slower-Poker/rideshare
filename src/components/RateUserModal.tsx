@@ -83,7 +83,9 @@ export function RateUserModal({
       if (parsed.data.rideOfferId) {
         createInput.rideOfferId = parsed.data.rideOfferId;
       }
-      const { data, errors } = await client.models.RideRating.create(createInput);
+      // @ts-expect-error TS2590 - Amplify Schema return type is too complex to represent
+      const result = await client.models.RideRating.create(createInput) as { data?: unknown; errors?: unknown[] };
+      const { data, errors } = result;
       if (errors) {
         toast.error('Failed to submit rating');
         return;

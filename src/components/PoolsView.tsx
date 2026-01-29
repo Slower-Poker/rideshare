@@ -40,12 +40,14 @@ export function PoolsView({ currentView: _currentView, setCurrentView, user }: P
 
   const fetchRiderPools = useCallback(async () => {
     try {
-      const { data, errors } = await client.models.RiderPool.list({ limit: 50 });
+      // @ts-expect-error TS2590 - Amplify Schema return type is too complex to represent
+      const result = await client.models.RiderPool.list({ limit: 50 }) as { data?: RiderPoolType[]; errors?: unknown[] };
+      const { data, errors } = result;
       if (errors) {
         toast.error('Failed to load rider pools');
         return;
       }
-      setRiderPools((data ?? []) as RiderPoolType[]);
+      setRiderPools(data ?? []);
     } catch {
       toast.error('Failed to load rider pools');
     }
@@ -53,12 +55,14 @@ export function PoolsView({ currentView: _currentView, setCurrentView, user }: P
 
   const fetchHostPools = useCallback(async () => {
     try {
-      const { data, errors } = await client.models.HostPool.list({ limit: 50 });
+      // @ts-expect-error TS2590 - Amplify Schema return type is too complex to represent
+      const result = await client.models.HostPool.list({ limit: 50 }) as { data?: HostPoolType[]; errors?: unknown[] };
+      const { data, errors } = result;
       if (errors) {
         toast.error('Failed to load driver pools');
         return;
       }
-      setHostPools((data ?? []) as HostPoolType[]);
+      setHostPools(data ?? []);
     } catch {
       toast.error('Failed to load driver pools');
     }

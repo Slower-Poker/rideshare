@@ -29,14 +29,17 @@ export function ConnectionsView({ currentView: _currentView, setCurrentView, use
     setUserProfileId(myProfile.id ?? null);
     if (!myProfile.id) return;
 
-    const { data: fromList, errors: fromErrors } = await client.models.Connection.list({
+    // @ts-expect-error TS2590 - Amplify Schema return type is too complex to represent
+    const fromResult = await client.models.Connection.list({
       filter: { fromUserId: { eq: myProfile.id } },
       limit: 50,
-    });
-    const { data: toList, errors: toErrors } = await client.models.Connection.list({
+    }) as { data?: ConnectionType[]; errors?: unknown[] };
+    const toResult = await client.models.Connection.list({
       filter: { toUserId: { eq: myProfile.id } },
       limit: 50,
-    });
+    }) as { data?: ConnectionType[]; errors?: unknown[] };
+    const { data: fromList, errors: fromErrors } = fromResult;
+    const { data: toList, errors: toErrors } = toResult;
     if (fromErrors || toErrors) {
       toast.error('Failed to load connections');
       return;

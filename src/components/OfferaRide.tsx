@@ -1145,7 +1145,8 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
       const pickupRadiusKm = pickupRadius > 0 ? convertToKm(pickupRadius, distanceUnit) : undefined;
       const dropoffRadiusKm = dropoffRadius > 0 ? convertToKm(dropoffRadius, distanceUnit) : undefined;
       
-      const { data: rideOffer, errors } = await client.models.RideOffer.create({
+      // @ts-expect-error TS2590 - Amplify Schema return type is too complex to represent
+      const result = await client.models.RideOffer.create({
         hostId: profile.id,
         originLatitude: originLocation.latitude,
         originLongitude: originLocation.longitude,
@@ -1162,13 +1163,17 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
         pickupRadius: pickupRadiusKm,
         dropoffRadius: dropoffRadiusKm,
         price: price,
-      });
+      }) as { data?: unknown; errors?: unknown[] };
+      const { data: rideOffer, errors } = result;
 
       if (errors) {
         if (import.meta.env.DEV) {
           console.error('Error creating ride offer:', errors);
         }
-        const errorMessage = errors[0]?.message || 'Failed to create ride offer. Please try again.';
+        const firstError = errors[0];
+        const errorMessage = (firstError && typeof firstError === 'object' && 'message' in firstError && typeof (firstError as { message: unknown }).message === 'string')
+          ? (firstError as { message: string }).message
+          : 'Failed to create ride offer. Please try again.';
         toast.error(errorMessage);
         setIsSubmitting(false);
         return;
