@@ -39,6 +39,8 @@ const schema = a.schema({
       riderPoolMemberships: a.hasMany('RiderPoolMember', 'userId'),
       ratingsGiven: a.hasMany('RideRating', 'raterId'),
       ratingsReceived: a.hasMany('RideRating', 'ratedUserId'),
+      hostPoolReviews: a.hasMany('HostPoolReview', 'reviewerId'),
+      riderPoolReviews: a.hasMany('RiderPoolReview', 'reviewerId'),
     })
     .authorization((allow) => [
       // Authenticated users can read all profiles and create their own
