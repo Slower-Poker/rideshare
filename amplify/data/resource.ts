@@ -31,6 +31,14 @@ const schema = a.schema({
       hostedRides: a.hasMany('RideOffer', 'hostId'),
       joinedRides: a.hasMany('RideParticipant', 'riderId'),
       rideRequests: a.hasMany('RideRequest', 'requesterId'),
+      connectionsFrom: a.hasMany('Connection', 'fromUserId'),
+      connectionsTo: a.hasMany('Connection', 'toUserId'),
+      createdHostPools: a.hasMany('HostPool', 'creatorId'),
+      createdRiderPools: a.hasMany('RiderPool', 'creatorId'),
+      hostPoolMemberships: a.hasMany('HostPoolMember', 'userId'),
+      riderPoolMemberships: a.hasMany('RiderPoolMember', 'userId'),
+      ratingsGiven: a.hasMany('RideRating', 'raterId'),
+      ratingsReceived: a.hasMany('RideRating', 'ratedUserId'),
     })
     .authorization((allow) => [
       // Authenticated users can read all profiles and create their own
@@ -61,6 +69,7 @@ const schema = a.schema({
       // Relationships
       host: a.belongsTo('UserProfile', 'hostId'),
       participants: a.hasMany('RideParticipant', 'rideOfferId'),
+      ratings: a.hasMany('RideRating', 'rideOfferId'),
     })
     .authorization((allow) => [
       // Allow guests to read rides (filtering by status should be done in application code)
@@ -88,21 +97,139 @@ const schema = a.schema({
       // Relationships
       rideOffer: a.belongsTo('RideOffer', 'rideOfferId'),
       rider: a.belongsTo('UserProfile', 'riderId'),
+      ratingsReceived: a.hasMany('RideRating', 'rideParticipantId'),
     })
     .authorization((allow) => [
       allow.authenticated().to(['read', 'create', 'update', 'delete']),
     ]),
 
-  // Ride Rating Model (for feedback after ride completion)
+  // Ride Rating Model (for feedback after ride completion or know-person)
   RideRating: a
     .model({
-      rideOfferId: a.id().required(),
+      rideOfferId: a.id(), // optional for know_person ratings
+      rideParticipantId: a.id(), // optional: link to specific participant for verified_ride (one rating per ride per rater/rated)
       raterId: a.id().required(),
       ratedUserId: a.id().required(),
       rating: a.integer().required(), // 1-5 stars
       comment: a.string(),
       ratingType: a.enum(['driver', 'rider']),
+      ratingSource: a.enum(['verified_ride', 'know_person']),
       createdAt: a.datetime().required(),
+      // Relationships
+      ride: a.belongsTo('RideOffer', 'rideOfferId'),
+      rideParticipant: a.belongsTo('RideParticipant', 'rideParticipantId'),
+      rater: a.belongsTo('UserProfile', 'raterId'),
+      ratedUser: a.belongsTo('UserProfile', 'ratedUserId'),
+    })
+    .authorization((allow) => [
+      allow.authenticated().to(['read', 'create']),
+    ]),
+
+  // Connection (vouch) - required for "know person" ratings
+  Connection: a
+    .model({
+      fromUserId: a.id().required(),
+      toUserId: a.id().required(),
+      status: a.enum(['pending', 'accepted']),
+      createdAt: a.datetime().required(),
+      updatedAt: a.datetime(),
+      // Relationships (UserProfile id for FK)
+      fromUser: a.belongsTo('UserProfile', 'fromUserId'),
+      toUser: a.belongsTo('UserProfile', 'toUserId'),
+    })
+    .authorization((allow) => [
+      allow.authenticated().to(['read', 'create', 'update', 'delete']),
+    ]),
+
+  // Host Pool (Driver Pool) - only verified members may create
+  HostPool: a
+    .model({
+      name: a.string().required(),
+      description: a.string(),
+      creatorId: a.id().required(),
+      createdAt: a.datetime().required(),
+      // Relationships
+      creator: a.belongsTo('UserProfile', 'creatorId'),
+      members: a.hasMany('HostPoolMember', 'hostPoolId'),
+      reviews: a.hasMany('HostPoolReview', 'hostPoolId'),
+    })
+    .authorization((allow) => [
+      allow.authenticated().to(['read', 'create', 'update', 'delete']),
+    ]),
+
+  // Rider Pool - anyone may create
+  RiderPool: a
+    .model({
+      name: a.string().required(),
+      description: a.string(),
+      creatorId: a.id().required(),
+      createdAt: a.datetime().required(),
+      // Relationships
+      creator: a.belongsTo('UserProfile', 'creatorId'),
+      members: a.hasMany('RiderPoolMember', 'riderPoolId'),
+      reviews: a.hasMany('RiderPoolReview', 'riderPoolId'),
+    })
+    .authorization((allow) => [
+      allow.authenticated().to(['read', 'create', 'update', 'delete']),
+    ]),
+
+  // Host Pool membership
+  HostPoolMember: a
+    .model({
+      hostPoolId: a.id().required(),
+      userId: a.id().required(),
+      role: a.enum(['member', 'admin']),
+      joinedAt: a.datetime().required(),
+      // Relationships
+      hostPool: a.belongsTo('HostPool', 'hostPoolId'),
+      user: a.belongsTo('UserProfile', 'userId'),
+    })
+    .authorization((allow) => [
+      allow.authenticated().to(['read', 'create', 'update', 'delete']),
+    ]),
+
+  // Rider Pool membership
+  RiderPoolMember: a
+    .model({
+      riderPoolId: a.id().required(),
+      userId: a.id().required(),
+      role: a.enum(['member', 'admin']),
+      joinedAt: a.datetime().required(),
+      // Relationships
+      riderPool: a.belongsTo('RiderPool', 'riderPoolId'),
+      user: a.belongsTo('UserProfile', 'userId'),
+    })
+    .authorization((allow) => [
+      allow.authenticated().to(['read', 'create', 'update', 'delete']),
+    ]),
+
+  // Host Pool review
+  HostPoolReview: a
+    .model({
+      hostPoolId: a.id().required(),
+      reviewerId: a.id().required(),
+      rating: a.integer().required(), // 1-5
+      comment: a.string(),
+      createdAt: a.datetime().required(),
+      // Relationships
+      hostPool: a.belongsTo('HostPool', 'hostPoolId'),
+      reviewer: a.belongsTo('UserProfile', 'reviewerId'),
+    })
+    .authorization((allow) => [
+      allow.authenticated().to(['read', 'create']),
+    ]),
+
+  // Rider Pool review
+  RiderPoolReview: a
+    .model({
+      riderPoolId: a.id().required(),
+      reviewerId: a.id().required(),
+      rating: a.integer().required(), // 1-5
+      comment: a.string(),
+      createdAt: a.datetime().required(),
+      // Relationships
+      riderPool: a.belongsTo('RiderPool', 'riderPoolId'),
+      reviewer: a.belongsTo('UserProfile', 'reviewerId'),
     })
     .authorization((allow) => [
       allow.authenticated().to(['read', 'create']),

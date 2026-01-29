@@ -121,6 +121,8 @@ export function useTermsGate(user: AuthUser | null) {
             username: user.username,
             termsAccepted: false,
             coopMemberNumber,
+            driverRating: 5,
+            riderRating: 5,
           });
           
           if (createErrors) {
@@ -181,6 +183,8 @@ export function useTermsGate(user: AuthUser | null) {
           termsVersion: CURRENT_TERMS_VERSION,
           termsAcceptedDate: new Date().toISOString(),
           coopMemberNumber,
+          driverRating: 5,
+          riderRating: 5,
         });
 
         if (createErrors) {

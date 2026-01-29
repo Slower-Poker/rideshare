@@ -54,6 +54,40 @@ export const ratingSchema = z.object({
   comment: z.string().max(500).optional(),
 });
 
+// Trust rating source
+export const ratingSourceSchema = z.enum(['verified_ride', 'know_person']);
+
+// Trust ride rating input (for create)
+export const trustRideRatingSchema = z.object({
+  rideOfferId: z.string().optional(),
+  ratedUserId: z.string(),
+  rating: z.number().min(1).max(5),
+  comment: z.string().max(500).optional(),
+  ratingType: z.enum(['driver', 'rider']),
+  ratingSource: ratingSourceSchema,
+}).refine(
+  (data) => data.ratingSource !== 'verified_ride' || (data.rideOfferId != null && data.rideOfferId !== ''),
+  { message: 'Ride reference required for verified ride rating', path: ['rideOfferId'] }
+);
+
+// Host pool create input
+export const hostPoolCreateSchema = z.object({
+  name: z.string().min(1).max(100),
+  description: z.string().max(500).optional(),
+});
+
+// Rider pool create input
+export const riderPoolCreateSchema = z.object({
+  name: z.string().min(1).max(100),
+  description: z.string().max(500).optional(),
+});
+
+// Pool review input
+export const poolReviewSchema = z.object({
+  rating: z.number().min(1).max(5),
+  comment: z.string().max(500).optional(),
+});
+
 /**
  * Validate data against a schema
  */

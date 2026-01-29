@@ -1,43 +1,54 @@
-# RideShare.Click 🚗
+# RideShare.Click
 
-A cooperative ride-sharing platform for community-based transportation. Built with React, TypeScript, AWS Amplify Gen 2, and Leaflet maps.
+A cooperative ride-sharing platform for community-based transportation. Built with React 19, TypeScript, AWS Amplify Gen 2, Vite 7, and Leaflet maps.
 
 ## Overview
 
-RideShare.Click is a community-owned ride-sharing platform that connects drivers ("hosts") with riders for shared transportation. Built on cooperative principles, focusing on community benefit rather than profit.
+RideShare.Click is a community-owned ride-sharing platform that connects drivers ("hosts") with riders for shared transportation. Built on cooperative principles, with a **trust rating system** and **pools** (rider/driver groups) to support social credit and community trust.
 
 ### Key Features
 
-- 🗺️ **Map-Based Interface** - Browse and create ride offers on an interactive map
-- 👥 **Cooperative Model** - Community-owned platform with no corporate shareholders
-- 🔐 **Secure Authentication** - Google Sign-In with AWS Amplify Auth
-- 📱 **Progressive Web App** - Works offline and can be installed on mobile devices
-- ♿ **Accessible** - WCAG 2.1 Level AA compliant
-- 🌍 **Location-Aware** - Uses device GPS for accurate location picking
+- **Map-Based Interface** – Browse and create ride offers on an interactive map
+- **Cooperative Model** – Community-owned platform with no corporate shareholders
+- **Trust Rating System** – Driver and rider ratings (5/5 default); verified-ride and know-person ratings
+- **Pools** – Rider pools (anyone can create) and driver pools (verified members only); pool reviews
+- **Connections** – Vouch/connection system for “know person” ratings
+- **Secure Authentication** – Google/Apple Sign-In with AWS Amplify Auth
+- **Progressive Web App** – Works offline and can be installed on mobile devices
+- **Accessible** – WCAG 2.1 Level AA compliant
+- **Location-Aware** – Uses device GPS for accurate location picking
 
 ## Technology Stack
 
 ### Frontend
-- **React 18+** with TypeScript (strict mode)
-- **Tailwind CSS** for styling (core utilities only)
-- **Leaflet** for interactive maps
-- **Vite** for blazing fast development
+
+- **React 19.2** with TypeScript (strict mode)
+- **Vite 7.3** – ESM-only, build target `baseline-widely-available`
+- **Tailwind CSS** for styling
+- **Leaflet** / **react-leaflet** for interactive maps
 - **React Toastify** for notifications
 - **Zod** for validation
+- **Vitest** for unit tests; **Playwright** for E2E
 
 ### Backend
-- **AWS Amplify Gen 2** - Fully serverless backend
-- **AWS Cognito** - Authentication with social providers
-- **AWS AppSync** - GraphQL API
-- **AWS DynamoDB** - NoSQL database
+
+- **AWS Amplify Gen 2** – Serverless backend
+- **AWS Cognito** – Authentication (social providers)
+- **AWS AppSync** – GraphQL API
+- **AWS DynamoDB** – NoSQL database
+
+### Requirements
+
+- **Node.js** 20.19+ or 22.12+ (Node 18 EOL)
+- **npm** (or compatible package manager)
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 18+ and npm
-- AWS Account with appropriate permissions
-- AWS CLI configured with your credentials
+- Node.js 20.19+ and npm
+- AWS account with appropriate permissions
+- AWS CLI configured (for sandbox and secrets)
 
 ### Installation
 
@@ -64,55 +75,64 @@ RideShare.Click is a community-owned ride-sharing platform that connects drivers
    ```bash
    npm run amplify:sandbox
    ```
-
-   This will:
-   - Deploy the backend to your AWS account
-   - Generate the `amplify_outputs.json` file
-   - Watch for changes and redeploy automatically
+   This deploys the backend, generates `amplify_outputs.json`, and watches for changes.
 
 5. **Start the development server** (in a new terminal)
    ```bash
    npm run dev
    ```
 
-6. **Open your browser**
+6. **Open your browser**  
    Navigate to `http://localhost:5173`
 
 ## Project Structure
 
 ```
 rideshare.click/
-├── amplify/                    # AWS Amplify backend
+├── amplify/
 │   ├── auth/
-│   │   └── resource.ts        # Auth configuration (SSO)
+│   │   └── resource.ts          # Auth (SSO)
 │   ├── data/
-│   │   └── resource.ts        # GraphQL schema & models
-│   └── backend.ts             # Backend definition
+│   │   └── resource.ts          # GraphQL schema & models
+│   ├── functions/
+│   │   └── novaAgentProxy/      # AI ride planner
+│   └── backend.ts               # Backend definition
 ├── src/
-│   ├── components/            # React components
-│   │   ├── HomePage.tsx       # Landing page
-│   │   ├── RideMapView.tsx    # Map view
-│   │   ├── MyAccountView.tsx  # User account
-│   │   ├── TermsPage.tsx      # Terms of service
-│   │   ├── ErrorBoundary.tsx  # Error handling
-│   │   └── LoadingFallback.tsx
-│   ├── hooks/                 # Custom React hooks
-│   │   ├── useGeolocation.ts  # GPS location
-│   │   └── useTermsGate.ts    # Terms enforcement
-│   ├── utils/                 # Utility functions
+│   ├── components/
+│   │   ├── HomePage.tsx
+│   │   ├── RideMapView.tsx
+│   │   ├── FindARideMap.tsx
+│   │   ├── MyAccountView.tsx    # Profile, trust ratings, Pools/Connections links
+│   │   ├── PoolsView.tsx        # Rider & driver pools
+│   │   ├── ConnectionsView.tsx  # Connections, know-person ratings
+│   │   ├── RateUserModal.tsx    # Rate user (verified_ride or know_person)
+│   │   ├── BookaRide.tsx, BookRideDetails.tsx, BookRideConfirm.tsx
+│   │   ├── BookaRideRequest.tsx
+│   │   ├── OfferaRide.tsx
+│   │   ├── RidePlannerChat.tsx
+│   │   ├── TermsPage.tsx, LicensePage.tsx
+│   │   ├── ErrorBoundary.tsx, LoadingFallback.tsx
+│   │   └── sharedProps.ts
+│   ├── hooks/
+│   │   ├── useGeolocation.ts
+│   │   └── useTermsGate.ts      # Terms + profile create (5/5 default ratings)
+│   ├── utils/
 │   │   ├── activeRideStorage.ts # localStorage (ONLY usage)
-│   │   ├── geoUtils.ts        # Distance calculations
-│   │   ├── mapUtils.ts        # Leaflet helpers
-│   │   ├── validation.ts      # Zod schemas
-│   │   ├── toast.ts           # Notifications
-│   │   └── errorHandler.ts    # Error handling
+│   │   ├── trustApi.ts          # canCreateHostPool, displayDriverRating, etc.
+│   │   ├── coopMemberNumber.ts
+│   │   ├── geoUtils.ts, mapUtils.ts, maplibreLoader.ts, maplibreUtils.ts
+│   │   ├── validation.ts       # Zod schemas (incl. trust rating, pools)
+│   │   ├── toast.ts, errorHandler.ts
+│   │   └── ...
 │   ├── types/
-│   │   └── index.ts           # TypeScript types
-│   ├── App.tsx                # Main app component
-│   ├── main.tsx               # Entry point
-│   └── index.css              # Global styles
+│   │   └── index.ts             # Schema types, ViewType, SharedProps
+│   ├── client.ts                # Amplify generateClient singleton
+│   ├── App.tsx, main.tsx, index.css
+│   └── vite-env.d.ts
+├── tests/
+│   └── smoke.spec.ts            # Playwright E2E
 ├── package.json
-├── vite.config.ts
+├── vite.config.ts               # Vite 7 + Vitest config
 ├── tsconfig.json
 ├── tailwind.config.js
 └── README.md
@@ -123,129 +143,129 @@ rideshare.click/
 ### Available Scripts
 
 ```bash
-# Start development server
-npm run dev
-
-# Start Amplify sandbox (required for backend)
-npm run amplify:sandbox
-
-# Type checking
-npm run type-check
-
-# Build for production
-npm run build
-
-# Preview production build
-npm run preview
-
-# Run E2E tests
-npm run test:e2e
+npm run dev              # Start Vite dev server
+npm run amplify:sandbox  # Start Amplify sandbox (backend)
+npm run type-check       # TypeScript check (tsc --noEmit)
+npm run build            # tsc && vite build
+npm run preview          # Preview production build
+npm run test             # Vitest unit tests
+npm run test:e2e         # Playwright E2E tests
 ```
 
 ### Key Constraints
 
-1. **localStorage** - ONLY use `activeRideStorage.ts` for localStorage access
-2. **Styling** - Use only Tailwind core utility classes (no custom classes, no @apply)
-3. **Amplify** - Always use Gen 2 patterns (never Gen 1)
-4. **Routing** - View-based routing through state (no React Router)
-5. **Notifications** - Always use toast functions (NEVER use alert())
+1. **localStorage** – Use only `activeRideStorage.ts` for localStorage access
+2. **Styling** – Tailwind utility classes only (no custom classes, no `@apply`)
+3. **Amplify** – Gen 2 patterns only; use `client` from `src/client.ts` (singleton)
+4. **Routing** – View-based routing via state (no React Router)
+5. **Notifications** – Use toast helpers only (no `alert()`)
+6. **React 19** – Use ref as prop (no `forwardRef`); consider `useEffectEvent` and `<Activity />` where appropriate
 
 ## Data Models
 
 ### UserProfile
-- User information, preferences, and stats
-- Tracks rides as host and rider
-- Stores rating information
+
+- User info, preferences, coop member number
+- **driverRating** / **riderRating** (default 5/5); **verifiedRideHost** (gates driver pool creation)
+- **totalRidesAsHost** / **totalRidesAsRider**
+- Relationships: hostedRides, joinedRides, rideRequests, connectionsFrom/To, createdHostPools/RiderPools, pool memberships, **ratingsGiven**, **ratingsReceived**
 
 ### RideOffer
-- Created by hosts offering rides
-- Contains origin, destination, time, and seats
-- Tracks status (available, matched, active, completed)
+
+- Origin, destination, time, seats, price, status
+- Relationships: host, participants, **ratings**
 
 ### RideParticipant
-- Join table for riders in a ride
-- Tracks approval status
-- Optional pickup/dropoff locations
+
+- Rider on a ride; status (pending, approved, declined, cancelled)
+- Relationships: rideOffer, rider, **ratingsReceived**
 
 ### RideRating
-- Ratings and feedback after ride completion
-- Builds trust in the community
+
+- **rating** (1–5), **comment**, **ratingType** (driver/rider), **ratingSource** (verified_ride | know_person)
+- **rideOfferId** optional (required for verified_ride); **rideParticipantId** optional (links to specific trip)
+- Relationships: ride, rideParticipant, rater, ratedUser
+
+### Connection
+
+- **fromUserId** / **toUserId**, **status** (pending | accepted), **createdAt**, **updatedAt**
+- Required for “know person” ratings; relationships: fromUser, toUser
+
+### HostPool (Driver Pool)
+
+- **name**, **description**, **creatorId** (verified members only to create)
+- Relationships: creator, members, reviews
+
+### RiderPool
+
+- Same shape; anyone can create; relationships: creator, members, reviews
+
+### HostPoolMember / RiderPoolMember
+
+- **poolId**, **userId**, **role** (member | admin), **joinedAt**
+
+### HostPoolReview / RiderPoolReview
+
+- **poolId**, **reviewerId**, **rating** (1–5), **comment**, **createdAt**
 
 ## Deployment
 
-### Production Deployment to AWS Amplify
+### Production (AWS Amplify)
 
-1. **Push to GitHub**
-   ```bash
-   git push origin main
-   ```
-
-2. **Connect to Amplify Console**
-   - Go to AWS Amplify Console
-   - Connect your GitHub repository
-   - Amplify will automatically detect the configuration
-
-3. **Set Environment Variables** (in Amplify Console)
-   - `GOOGLE_CLIENT_ID`
-   - `GOOGLE_CLIENT_SECRET`
-
-4. **Deploy**
-   Amplify will automatically deploy on every push to main branch
+1. Push to GitHub and connect the repo in AWS Amplify Console.
+2. Set environment variables (e.g. Google OAuth) in the Amplify app.
+3. Amplify builds and deploys on push to the connected branch.
 
 ## Contributing
 
-We welcome contributions! This is a cooperative project and community input is valued.
-
-### Development Guidelines
-
-1. Follow TypeScript strict mode - no `any` types
-2. Use Tailwind CSS only - no custom CSS classes
-3. Write accessible code (WCAG 2.1 Level AA)
-4. Test on mobile devices
-5. Keep components focused and reusable
+Contributions are welcome. Please follow TypeScript strict mode, Tailwind-only styling, and WCAG 2.1 Level AA where applicable.
 
 ## License
 
-This project is open source and available under the [GNU General Public License v3.0](LICENSE) (GPL-3.0-or-later).
+[GNU General Public License v3.0](LICENSE) (GPL-3.0-or-later).
 
 ## Support
 
-For questions or issues:
 - Open an issue on GitHub
 - Contact: hello@rideshare.click
 
-## Roadmap
+---
 
-### Phase 1: Foundation ✅
-- [x] Project setup
-- [x] Authentication
-- [x] Data models
-- [x] Basic UI components
+## Roadmap & Todo Checklist
 
-### Phase 2: Core Features (In Progress)
-- [ ] Create ride offers
-- [ ] Browse rides on map
-- [ ] Join ride requests
-- [ ] Ride matching
+### Done
 
-### Phase 3: Active Rides
-- [ ] Driver dashboard
-- [ ] Rider dashboard
-- [ ] Real-time tracking
-- [ ] Ride completion
+- [x] Project setup (React 19, Vite 7, Amplify Gen 2)
+- [x] Authentication (Google/Apple SSO)
+- [x] Core data models (UserProfile, RideOffer, RideParticipant, RideRequest)
+- [x] Trust rating schema (RideRating with ratingSource; UserProfile driverRating/riderRating default 5/5)
+- [x] Pools schema (HostPool, RiderPool, members, pool reviews)
+- [x] Connections schema (vouch for know-person ratings)
+- [x] Profile trust ratings display (driver/rider 5/5 default)
+- [x] Pools view (list rider/driver pools; create rider pool; create driver pool when verified)
+- [x] Connections view (list pending/accepted; accept request; rate accepted connections)
+- [x] RateUserModal (know_person and verified_ride; ratingSource, optional rideOfferId)
+- [x] Unit tests (Vitest) for trustApi and validation
+- [x] Map-based browse/offer flows, book ride, offer ride, ride planner chat
 
-### Phase 4: Community Features
-- [ ] Rating system
-- [ ] User profiles
-- [ ] Ride history
-- [ ] Trust score
+### In progress / Next
 
-### Phase 5: Advanced
-- [ ] Push notifications
-- [ ] Payment integration
-- [ ] Advanced matching
-- [ ] Analytics dashboard
+- [ ] **Post-ride rating flow** – After ride completion, prompt host/rider to rate (verified_ride + rideOfferId / rideParticipantId)
+- [ ] **Send connection request** – UI to send a connection request (e.g. by coop member number or profile)
+- [ ] **Pool join/leave** – Join or leave a pool; show member list
+- [ ] **Pool reviews** – Submit and display pool reviews; show aggregate pool rating
+- [ ] **UserProfile rating aggregation** – Recompute driverRating/riderRating from RideRating (Lambda or on read)
+
+### Later
+
+- [ ] **Server-side enforcement** – Lambda/custom mutations for createHostPool (verified only) and createRideRating (validate ride/connection)
+- [ ] **Driver dashboard** – Active ride, riders, completion
+- [ ] **Rider dashboard** – Active ride, completion
+- [ ] **Real-time tracking** – Optional live position during ride
+- [ ] **Push notifications** – Ride updates, connection requests
+- [ ] **Payment integration** – Optional cost sharing
+- [ ] **Analytics** – Usage and trust metrics
 
 ---
 
-Built with ❤️ by the RideShare.Click community
+Built with care by the RideShare.Click community

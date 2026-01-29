@@ -6,9 +6,16 @@ export type RideOffer = Schema['RideOffer']['type'];
 export type RideParticipant = Schema['RideParticipant']['type'];
 export type RideRating = Schema['RideRating']['type'];
 export type RideRequest = Schema['RideRequest']['type'];
+export type Connection = Schema['Connection']['type'];
+export type HostPool = Schema['HostPool']['type'];
+export type RiderPool = Schema['RiderPool']['type'];
+export type HostPoolMember = Schema['HostPoolMember']['type'];
+export type RiderPoolMember = Schema['RiderPoolMember']['type'];
+export type HostPoolReview = Schema['HostPoolReview']['type'];
+export type RiderPoolReview = Schema['RiderPoolReview']['type'];
 
 // View types for routing
-export type ViewType = 'home' | 'map' | 'findARideMap' | 'activeRide' | 'account' | 'terms' | 'license' | 'bookRide' | 'bookRideDetails' | 'bookRideConfirm' | 'bookaRideRequest' | 'offerRide' | 'ridePlannerChat';
+export type ViewType = 'home' | 'map' | 'findARideMap' | 'activeRide' | 'account' | 'terms' | 'license' | 'bookRide' | 'bookRideDetails' | 'bookRideConfirm' | 'bookaRideRequest' | 'offerRide' | 'ridePlannerChat' | 'pools' | 'connections';
 
 // User types
 export type UserType = 'host' | 'rider' | 'both';

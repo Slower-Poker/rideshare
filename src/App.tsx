@@ -19,6 +19,8 @@ import { BookaRideRequest } from './components/BookaRideRequest';
 import { FindARideMap } from './components/FindARideMap';
 import { OfferaRide } from './components/OfferaRide';
 import { RidePlannerChat } from './components/RidePlannerChat';
+import { PoolsView } from './components/PoolsView';
+import { ConnectionsView } from './components/ConnectionsView';
 import 'react-toastify/dist/ReactToastify.css';
 import './index.css';
 
@@ -39,7 +41,7 @@ function App() {
     }
     const stored = sessionStorage.getItem(VIEW_STORAGE_KEY);
     // Don't restore 'terms' or 'license' view - always start at home to avoid auto-redirect loop
-    if (stored && ['home', 'map', 'findARideMap', 'account', 'activeRide', 'bookRide', 'bookRideDetails', 'bookRideConfirm', 'bookaRideRequest', 'offerRide', 'ridePlannerChat'].includes(stored)) {
+    if (stored && ['home', 'map', 'findARideMap', 'account', 'activeRide', 'bookRide', 'bookRideDetails', 'bookRideConfirm', 'bookaRideRequest', 'offerRide', 'ridePlannerChat', 'pools', 'connections'].includes(stored)) {
       wasRestored.current = true; // We restored from storage = page refresh
       return stored as ViewType;
     }
@@ -184,6 +186,10 @@ function App() {
         );
       case 'license':
         return <LicensePage {...sharedProps} />;
+      case 'pools':
+        return <PoolsView {...sharedProps} />;
+      case 'connections':
+        return <ConnectionsView {...sharedProps} />;
       default:
         return <HomePage {...sharedProps} />;
     }
