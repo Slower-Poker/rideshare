@@ -1,0 +1,141 @@
+---
+title: Troubleshooting & Gotchas
+description: Common issues and their solutions
+priority: 82
+---
+
+# Troubleshooting & Gotchas
+
+## Common Issues
+
+### Issue 1: Amplify mutation/query fails silently
+
+**Symptoms:**
+- Create/update/delete does nothing; no error shown
+- Data not appearing after action
+
+**Cause:**
+- Amplify returns errors in `errors` array; code may not check it
+- Authorization rule blocking request
+- Network failure
+
+**Fix:**
+- Always check both `data` and `errors` on Amplify responses:
+  ```typescript
+  const { data, errors } = await client.models.RideOffer.create({ ... });
+  if (errors?.length) {
+    throw new Error(errors[0].message || 'Request failed');
+  }
+  ```
+- Use toast for user feedback
+- Check network tab for GraphQL response and auth headers
+
+### Issue 2: Active ride or view lost after refresh
+
+**Symptoms:**
+- User refreshes; active ride context or current view is lost
+
+**Cause:**
+- Active ride: only `activeRideStorage.ts` persists to localStorage; check key and structure
+- View: App uses sessionStorage (`VIEW_STORAGE_KEY`); terms/license are not restored to avoid redirect loops
+
+**Fix:**
+- For active ride: verify `activeRideStorage` read/write and that component restores from it on mount
+- For view: ensure only allowed views are stored/restored (see App.tsx initial state)
+
+### Issue 3: Map not loading or markers wrong
+
+**Symptoms:**
+- Map blank or tiles not loading
+- Markers in wrong place or missing
+
+**Cause:**
+- Leaflet CSS not loaded; invalid lat/lng; async data not yet loaded
+- GeoUtils/mapUtils expecting different coordinate format
+
+**Fix:**
+- Ensure Leaflet CSS is imported (e.g. in component or index.css)
+- Validate coordinates (numbers, valid ranges)
+- Use `useGeolocation` and geoUtils for distance/radius; check mapUtils for projection/format
+
+### Issue 4: Tailwind styles not working
+
+**Symptoms:**
+- Styles not applying
+- Custom classes not working
+
+**Cause:**
+- Using arbitrary values or custom classes; Tailwind config missing file paths
+
+**Fix:**
+- Use only core Tailwind utilities
+- Replace `w-[123px]` with standard classes (w-32, etc.)
+- Remove custom classes and @apply; check tailwind.config.js content paths
+
+### Issue 5: AWS SSO / Amplify sandbox credentials expired
+
+**Symptoms:**
+- "Error loading SSO Token" or "SSO session expired"
+- Amplify sandbox fails with auth errors
+
+**Fix:**
+```bash
+aws sso login --profile YourProfile
+aws sts get-caller-identity --profile YourProfile
+npm run amplify:sandbox
+```
+Use the project’s AWS profile if one is documented.
+
+### Issue 6: Apple Sign In fails
+
+**Symptoms:**
+- Apple Sign In redirect fails or "invalid_client"
+- Works once then fails
+
+**Cause:**
+- Callback/logout URLs mismatch (e.g. production vs localhost)
+- Apple credentials (clientId, keyId, privateKey, teamId) incorrect or expired
+- Multiple tabs / cached credentials
+
+**Fix:**
+- Ensure amplify/auth/resource.ts callbackUrls and logoutUrls include current origin (e.g. https://rideshare.click, http://localhost:5173)
+- Verify Apple Developer config and Amplify secrets (SIWA_*)
+- Try incognito or different browser; clear site data if needed
+- See 06-authentication.mdc for Apple setup
+
+### Issue 7: Ride Planner (Nova) returns 401 or fails
+
+**Symptoms:**
+- chatRidePlanner query fails with Unauthorized or no response
+
+**Cause:**
+- User not authenticated (Ride Planner requires auth)
+- Lambda (novaAgentProxy) not validating token or misconfigured
+- API/function URL or IAM wrong
+
+**Fix:**
+- Ensure user is signed in before opening Ride Planner
+- Check amplify/data/resource.ts chatRidePlanner handler and auth
+- Check Lambda auth (JWT validation, CORS); see 18-lambda-security.mdc
+
+### Issue 8: Terms or license redirect loop
+
+**Symptoms:**
+- App keeps redirecting to terms or license
+- Cannot get back to home
+
+**Cause:**
+- View restoration stores terms/license; App intentionally does not restore those views to avoid loops
+- Logic that forces view to terms on every load
+
+**Fix:**
+- Do not persist terms/license in VIEW_STORAGE_KEY; see App.tsx comments
+- Only redirect to terms when user attempts an action that requires acceptance, not on every load
+
+## General Debugging
+
+- **Console:** Check for errors and Amplify/client logs
+- **Network:** Inspect GraphQL and auth headers; verify 200 and response body
+- **Auth:** Confirm user is signed in when required (getCurrentUser, Hub)
+- **Data:** Verify schema and authorization in amplify/data/resource.ts
+- **Types:** Run `npm run type-check`; fix TypeScript errors before assuming runtime behavior

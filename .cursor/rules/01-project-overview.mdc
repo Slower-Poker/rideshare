@@ -1,0 +1,52 @@
+---
+title: Project Overview
+description: What RideShare.Click is and how it works
+priority: 85
+---
+
+# Project Overview
+
+**RideShare.Click** (rideshare.click) is a cooperative ride-sharing platform for community-based transportation. Users can offer rides as hosts, book rides as riders, join driver or rider pools, and manage connections (vouches) for trust. The app supports optional login: guests can browse; signing in is required to book, offer, or use pools and connections.
+
+## Access Levels
+
+### Unauthenticated Users (Optional Login)
+**Can browse without signing in:**
+- ✅ View home and map
+- ✅ Browse ride listings and details (where exposed)
+- ✅ Access My Account page (with sign-in UI)
+- ❌ Cannot book rides (authentication required)
+- ❌ Cannot offer rides
+- ❌ Cannot use Ride Planner chat (Nova)
+- ❌ Cannot manage pools or connections
+
+### Authenticated Users
+**Full access when signed in:**
+- **Host**: Create ride offers (origin, destination, time, seats, price), manage participants
+- **Rider**: Search/find rides, request to join, manage bookings
+- **Pools**: Create or join driver pools (HostPool) or rider pools (RiderPool)
+- **Connections**: Send/accept connection requests; give/receive “know person” ratings
+- **Ride Planner**: Use AI chat (Nova Agent proxy) for trip planning
+- **Account**: Profile, terms acceptance, ratings, coop member number
+
+## Core Flows
+
+- **Book a ride**: Find a ride → details → confirm booking (RideParticipant)
+- **Offer a ride**: Create RideOffer (origin, destination, time, seats, price)
+- **Request a ride**: Create RideRequest (pickup, dropoff, time, seats, max amount)
+- **Pools**: HostPool / RiderPool with members and reviews
+- **Connections**: Connection (vouch) between users; supports “know person” ratings
+- **Ratings**: RideRating (driver/rider, verified_ride or know_person) after rides or for connections
+
+## Tech Philosophy
+
+**MVP focused on core functionality.**
+
+Prioritize:
+- Working features over perfect architecture
+- User experience over complex optimizations
+- Clear code over clever code
+- SSO authentication over custom auth
+- Explicit validation and ownership checks for mutations
+
+Refactor and optimize as the product grows.

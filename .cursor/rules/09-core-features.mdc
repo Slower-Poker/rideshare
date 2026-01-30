@@ -1,0 +1,94 @@
+---
+title: Core Features & Business Logic
+description: Key ride-share features and how they work
+priority: 82
+---
+
+# Core Features & Business Logic
+
+## Book a Ride Flow
+
+1. **Find**: User finds a ride (e.g. from map or list) and selects it.
+2. **Details**: `BookRideDetails` shows ride info (origin, destination, time, seats, price, host).
+3. **Confirm**: `BookRideConfirm` collects pickup/dropoff (if needed) and confirms.
+4. **Participant**: Create or update `RideParticipant` (riderId, rideOfferId, status: pending/approved/declined, pickup/dropoff).
+
+**Files:** `BookaRide.tsx`, `BookRideDetails.tsx`, `BookRideConfirm.tsx`, `amplify/data/resource.ts` (RideParticipant).
+
+## Offer a Ride Flow
+
+1. Host enters origin, destination, departure time, available seats, price, vehicle/notes.
+2. Create `RideOffer` (hostId, origin/destination lat/lng and addresses, departureTime, availableSeats, seatsBooked, status, price, pickupRadius, dropoffRadius).
+3. Host can manage participants (approve/decline) and update or cancel the offer.
+
+**Files:** `OfferaRide.tsx`, `amplify/data/resource.ts` (RideOffer).
+
+## Request a Ride Flow
+
+Riders can create a `RideRequest` (requesterId, pickup/dropoff, requestedTime, numberOfSeats, maximumAmount, notes, status). Used for matching or discovery; application logic may match requests to offers.
+
+**Files:** `BookaRideRequest.tsx`, `amplify/data/resource.ts` (RideRequest).
+
+## Find Rides (Map)
+
+- **FindARideMap**: Map view to discover rides (RideOffer markers, filters).
+- **RideMapView**: General map view.
+- Uses Leaflet, `utils/mapUtils.ts`, `utils/geoUtils.ts`, `hooks/useGeolocation.ts` for location and distance.
+
+**Files:** `FindARideMap.tsx`, `RideMapView.tsx`, `utils/geoUtils.ts`, `utils/mapUtils.ts`.
+
+## Ride Planner Chat (Nova)
+
+- Authenticated users can use AI chat for trip planning.
+- Custom query `chatRidePlanner(message, conversationId)` in data schema; handler is Lambda `novaAgentProxy`.
+- Frontend: `RidePlannerChat.tsx`; backend: `amplify/functions/novaAgentProxy/`.
+
+**Files:** `RidePlannerChat.tsx`, `amplify/data/resource.ts` (chatRidePlanner), `amplify/functions/novaAgentProxy/`.
+
+## Pools (Driver / Rider Pools)
+
+- **HostPool**: Driver pools; only verified members may create (per schema intent). Has name, description, creatorId; members via HostPoolMember; reviews via HostPoolReview.
+- **RiderPool**: Rider pools; anyone may create. Same pattern: RiderPool, RiderPoolMember, RiderPoolReview.
+- **PoolsView**: UI for creating/joining pools and viewing members/reviews.
+
+**Files:** `PoolsView.tsx`, `amplify/data/resource.ts` (HostPool, RiderPool, *Member, *Review).
+
+## Connections (Vouches)
+
+- **Connection**: Between two users (fromUserId, toUserId, status: pending/accepted). Used for “know person” trust.
+- **ConnectionsView**: UI to send/accept connection requests.
+- **Trust API**: `utils/trustApi.ts` for trust/connection-related logic; `utils/coopMemberNumber.ts` for coop member numbers.
+
+**Files:** `ConnectionsView.tsx`, `utils/trustApi.ts`, `utils/coopMemberNumber.ts`, `amplify/data/resource.ts` (Connection).
+
+## Ratings
+
+- **RideRating**: After a ride (verified_ride) or for a known person (know_person). Fields: rideOfferId, rideParticipantId (optional), raterId, ratedUserId, rating (1–5), comment, ratingType (driver/rider), ratingSource (verified_ride/know_person).
+- **RateUserModal**: UI to submit a rating.
+
+**Files:** `RateUserModal.tsx`, `amplify/data/resource.ts` (RideRating).
+
+## Optional Login & Unauthenticated Access
+
+- App loads without requiring auth (`user` can be `null`).
+- Login UI is in My Account; unauthenticated users can browse home, map, find rides (read-only where allowed).
+- **Require auth for:** booking rides, offering rides, Ride Planner chat, pools, connections, submitting ratings.
+
+**Implementation:** `App.tsx` (no Authenticator wrapper; `user` state), `MyAccountView.tsx` (Authenticator when `!user`).
+
+## Terms Acceptance
+
+- Terms versioning (e.g. `TERMS_VERSION` constant); users must accept before certain actions.
+- Stored on `UserProfile`: `termsAccepted`, `termsVersion`, `termsAcceptedDate`.
+- `useTermsGate` hook enforces acceptance; terms page/modal for new or updated terms.
+- App uses session storage for view restoration; terms/license views are not restored to avoid redirect loops.
+
+**Files:** `hooks/useTermsGate.ts`, `TermsPage.tsx`, `LicensePage.tsx`.
+
+## Active Ride Persistence
+
+- **Only** `utils/activeRideStorage.ts` may use localStorage for app data (active ride recovery).
+- `ActiveRideData`: rideOfferId, role (host/rider), lastUpdated.
+- Used to restore “active ride” context after refresh; primary state lives in Amplify Data.
+
+**Files:** `utils/activeRideStorage.ts`, `src/types/index.ts` (ActiveRideData).

@@ -1,0 +1,744 @@
+---
+title: Common Patterns
+description: Reusable code patterns used throughout the project
+priority: 80
+---
+
+# Common Patterns
+
+**Note:** This app is RideShare.Click (ride-share). Patterns 0–1 (auth, optional login, error handling) apply directly. Chip/billing patterns (2c/2d) are for reference if you add payment features later; this codebase does not use chips or Stripe.
+
+## Pattern 0: Optional Authentication Handling
+
+**The app supports optional login - handle `user` and `userProfile` being `null`.**
+
+### Checking Authentication Before Actions
+
+```typescript
+// ✅ CORRECT - Check userProfile before restricted actions
+const handleBookRide = () => {
+  if (!userProfile) {
+    showInfoToast('Please sign in to book rides. Go to My Account to sign in.');
+    setCurrentView('account');
+    return;
+  }
+  // Proceed with join logic
+};
+
+const handleSaveRide = async () => {
+  if (!userProfile) {
+    showErrorToast('Please sign in to save rides.');
+    return;
+  }
+  // Proceed with save
+};
+```
+
+### Disabling Buttons for Unauthenticated Users
+
+```typescript
+// ✅ CORRECT - Disable with accessibility attributes
+<button
+  disabled={!userProfile}
+  aria-disabled={!userProfile}
+  aria-describedby={!userProfile ? "auth-required-error" : undefined}
+  className={!userProfile ? 'opacity-60 cursor-not-allowed' : ''}
+  onClick={handleCreateRide}
+>
+  Create Ride
+</button>
+{!userProfile && (
+  <div id="auth-required-error" className="sr-only">
+    Please sign in to create rides.
+  </div>
+)}
+```
+
+### Conditional Rendering Based on Auth State
+
+```typescript
+// ✅ CORRECT - Show different UI for authenticated/unauthenticated
+{userProfile ? (
+  <div>
+    {/* Full authenticated UI */}
+    <AccountSettings />
+    <ProfileSection />
+  </div>
+) : (
+  <Authenticator socialProviders={['google', 'apple']} />
+)}
+```
+
+### Modal Preview Pattern
+
+```typescript
+// ✅ CORRECT - Allow preview, block actions
+const handleOpenModal = () => {
+  // Allow unauthenticated users to open modal (preview)
+  setShowModal(true);
+};
+
+const handleSave = async () => {
+  // Check authentication before saving
+  if (!userProfile) {
+    showErrorToast('Please sign in to save rides.');
+    return;
+  }
+  // Proceed with save
+};
+```
+
+### React Hooks with Optional User
+
+```typescript
+// ✅ CORRECT - All hooks at top level, then check user
+// Example: view that needs auth-gated state (replace with your component name)
+function SomeView({ userProfile }: Props) {
+  // All hooks must be at top level (React Rules of Hooks)
+  const [state, setState] = useState<SomeState | null>(null);
+  const [loading, setLoading] = useState(true);
+  
+  // Check authentication AFTER all hooks
+  useEffect(() => {
+    if (!userProfile) {
+      showErrorToast('Please sign in to continue.');
+      clearActiveRide();
+      setCurrentView('home');
+      return;
+    }
+    // Initialize ride for authenticated user
+  }, [userProfile]);
+  
+  // Rest of component...
+}
+```
+
+**Key Points:**
+- ✅ Always check `userProfile` (not `user`) for app-level permissions
+- ✅ Use `user` for authentication state, `userProfile` for app data
+- ✅ Provide clear feedback when authentication is required
+- ✅ Navigate to My Account page for sign-in when appropriate
+- ✅ All React hooks must be at top level (before any conditional returns)
+
+## Pattern 1: Active Ride Storage & Persistence
+
+```typescript
+import { getActiveRide, isActiveRideValid, clearActiveRide } from './utils/activeRideStorage';
+import { useRidePersistence } from './hooks/useRidePersistence';
+
+const { persistSnapshot } = useRidePersistence();
+
+// Persist the latest hands/shoe snapshot
+persistSnapshot({
+  hands: activeHands,
+  shoe: currentShoe,
+  playerHand,
+  visitedLocations,
+  source: 'ParticipantView:persistRideSnapshot',
+});
+
+// Restore active ride on mount
+const activeRide = getActiveRide();
+if (activeRide && isActiveRideValid(activeRide, events, userId, eventEndTime)) {
+  // Restore state (hydration barrier uses card counts)
+}
+
+// Clear active ride (Leave ride button)
+clearActiveRide();
+```
+
+**See `plans/LESSONS_LEARNED.md` for context on persistence architecture**
+
+## Pattern 2: Amplify Data Client
+
+```typescript
+import { generateClient } from 'aws-amplify/data';
+import type { Schema } from '../amplify/data/resource';
+
+const client = generateClient<Schema>();
+
+// List - ALWAYS include limit for cost optimization
+const { data: events } = await client.models.Event.list({
+  limit: 100,  // Required: Prevents full table scans and reduces DynamoDB costs
+});
+
+// Create with explicit error checking
+const { data: newProfile, errors } = await client.models.UserProfile.create({
+  userId: user.userId,
+  email: user.signInDetails?.loginId || '',
+  chipsBalance: 50,
+});
+
+// CRITICAL: Check for errors explicitly (Amplify doesn't throw!)
+if (!newProfile || (errors && errors.length > 0)) {
+  throw new Error(`Creation failed: ${errors?.[0]?.message}`);
+}
+
+// Update
+const { data: updatedProfile } = await client.models.UserProfile.update({
+  id: profile.id,
+  termsAccepted: true,
+  termsVersion: TERMS_VERSION,
+});
+
+// Delete Event (ALWAYS use cascade delete utility)
+import { cascadeDeleteEvent } from '../../utils/cascadeDeleteEvent';
+
+// ✅ CORRECT - Deletes event and ALL associated data
+await cascadeDeleteEvent(eventId);
+
+// ❌ WRONG - Only deletes event, leaves orphaned data
+// const { data: deleted } = await client.models.Event.delete({ id: eventId });
+```
+
+## Pattern 2a: GSI-Based Queries (Performance Critical)
+
+**CRITICAL:** Always use GSI query methods when filtering by indexed fields to avoid table scans.
+
+```typescript
+// ✅ CORRECT - Use GSI methods for eventId/handId queries
+
+// Query SubmittedHands by eventId (uses GSI)
+const { data: hands } = await client.models.SubmittedHand.listSubmittedHandsByEvent({
+  eventId: event.id,
+});
+
+// Query Cards by eventId (batch fetch, uses GSI)
+const { data: cards } = await client.models.Card.listCardsByEvent({
+  eventId: event.id,
+});
+
+// Query Cards by handId (uses GSI)
+const { data: cards } = await client.models.Card.listCardsByHand({
+  handId: hand.id,
+});
+
+// Query PutIns by eventId (uses GSI - added 2025-12-03)
+const { data: putIns } = await client.models.PutIn.listPutInsByEvent({
+  eventId: event.id,
+});
+
+// Query Pots by eventId (uses GSI - added 2025-12-03)
+const { data: pots } = await client.models.Pot.listPotsByEvent({
+  eventId: event.id,
+});
+
+// ❌ WRONG - Table scans (very slow in production)
+const { data: hands } = await client.models.SubmittedHand.list({
+  filter: { eventId: { eq: event.id } }
+});
+
+const { data: cards } = await client.models.Card.list({
+  filter: { eventId: { eq: event.id } }
+});
+```
+
+### GSI Pagination Pattern
+
+```typescript
+// Fetch all cards for an event with pagination
+const allCards: Schema['Card']['type'][] = [];
+let nextToken: string | undefined = undefined;
+
+do {
+  const queryParams: any = { eventId: event.id };
+  if (nextToken) {
+    queryParams.nextToken = nextToken;
+  }
+  
+  const result = await client.models.Card.listCardsByEvent(queryParams);
+  
+  if (result.data) {
+    // Filter out deleted cards if needed
+    const validCards = result.data.filter(card => !card.isDeleted);
+    allCards.push(...validCards);
+  }
+  
+  nextToken = result.nextToken || undefined;
+} while (nextToken);
+```
+
+**See `10-data-models.mdc` for complete GSI documentation**
+
+## Pattern 2b: Race Condition Prevention with Ref Guards (Added 2025-12-03)
+
+**CRITICAL:** Use `useRef` guards to prevent double-clicks and race conditions in async handlers.
+
+```typescript
+import { useRef } from 'react';
+
+// ✅ CORRECT - Ref guard prevents double-clicks and race conditions
+const isProcessingRef = useRef(false);
+const [isProcessing, setIsProcessing] = useState(false);
+
+const handleAction = async () => {
+  // Race condition guard - check ref first
+  if (isProcessingRef.current) {
+    showInfoToast('Action already in progress. Please wait.');
+    return;
+  }
+  
+  // Set ref before state (refs are synchronous)
+  isProcessingRef.current = true;
+  setIsProcessing(true);
+  
+  try {
+    await performAsyncAction();
+    showSuccessToast('Action completed!');
+  } catch (error) {
+    handleError(error, { operation: 'handleAction' });
+    showErrorToast('Failed to complete action.');
+  } finally {
+    // Always reset in finally block
+    isProcessingRef.current = false;
+    setIsProcessing(false);
+  }
+};
+
+// ❌ WRONG - State alone can't prevent race conditions (setState is async)
+const handleAction = async () => {
+  if (isProcessing) return; // Race condition: multiple clicks before state updates
+  setIsProcessing(true);
+  // ...
+};
+```
+
+**Why Refs Instead of State:**
+- `useRef` updates are synchronous (immediate)
+- `useState` updates are asynchronous (batched)
+- Multiple rapid clicks can bypass state-only checks
+
+**Components Using This Pattern:**
+- `ResultsPage.tsx` - `handleCollectPot`, `handleDeleteHand`
+- `QuickRidesSection.tsx` - `handleCreateQuickRide`
+- `HostedRidesSection.tsx` - `confirmDeleteRide`
+- `MyAccountView.tsx` - `handleBuyCoins`
+- `ParticipantView.tsx` - `handleSubmit`, `handlePutIn`, `handleDraw`
+
+## Pattern 2c: Fresh Balance Validation for Chip Operations (Added 2025-12-04)
+
+**CRITICAL:** All chip/billing operations MUST fetch fresh balance from database before validation to prevent race conditions and double-spend attacks.
+
+```typescript
+// ✅ CORRECT - Fetch fresh balance before chip operations
+const handleChipOperation = async (amount: number, playerId: string) => {
+  // ALWAYS fetch fresh balance - passed values may be stale
+  const { data: freshProfile } = await client.models.UserProfile.get({ id: playerId });
+  if (!freshProfile) {
+    throw new Error('Failed to verify account');
+  }
+  
+  const freshBalance = freshProfile.chipsBalance || 0;
+  
+  // Validate against FRESH balance
+  if (freshBalance < amount) {
+    throw new Error(`Insufficient chips. You have ${freshBalance} but need ${amount}.`);
+  }
+  
+  const newBalance = freshBalance - amount;
+  
+  // Proceed with operation using fresh values
+  await client.models.UserProfile.update({
+    id: playerId,
+    chipsBalance: newBalance,
+  });
+};
+
+// ❌ WRONG - Using stale balance from React state or passed parameters
+const handleChipOperation = async (amount: number, staleBalance: number, playerId: string) => {
+  // Race condition: balance may have changed since component rendered
+  if (staleBalance < amount) {
+    throw new Error('Insufficient chips');
+  }
+  
+  const newBalance = staleBalance - amount; // Could go negative!
+  await client.models.UserProfile.update({
+    id: playerId,
+    chipsBalance: newBalance, // Using stale calculation
+  });
+};
+```
+
+**Operations Requiring Fresh Balance:**
+- `processPutIn()` - Put-in chip deduction
+- `collectPot()` - Pot collection chip credit
+- `createBotPutIn()` - Bot put-in deduction
+- `handleCreateRide()` - Ride creation fee deduction
+- Stripe webhook - Purchase credit
+
+**Key Files Using This Pattern:**
+- `src/utils/participantPutIn.ts` - `processPutIn()`
+- `src/utils/resultsPotCollection.ts` - `collectPot()`
+- `src/utils/botPlayers.ts` - `createBotPutIn()`
+- `src/components/home/CreateRideWizard/CreateRideWizard.tsx` - `handleCreateRide()`
+- `amplify/functions/stripeWebhook/handler.ts` - Stripe webhook handler
+
+## Pattern 2d: Debit-Before-Action with Rollback (Added 2025-12-04)
+
+**CRITICAL:** When creating billable resources, deduct chips FIRST, then create the resource. If resource creation fails, rollback the chip deduction.
+
+```typescript
+// ✅ CORRECT - Deduct chips first, rollback on failure
+const createBillableResource = async (cost: number, userProfile: UserProfileModel) => {
+  // 1. Fetch fresh balance
+  const { data: freshProfile } = await client.models.UserProfile.get({ id: userProfile.id });
+  const freshBalance = freshProfile?.chipsBalance || 0;
+  
+  if (freshBalance < cost) {
+    throw new Error('Insufficient chips');
+  }
+  
+  const newBalance = freshBalance - cost;
+  
+  // 2. DEDUCT CHIPS FIRST
+  await client.models.UserProfile.update({
+    id: userProfile.id,
+    chipsBalance: newBalance,
+  });
+  
+  // 3. Try to create resource
+  try {
+    const { data: resource, errors } = await client.models.Resource.create({ ... });
+    if (!resource || errors?.length) {
+      throw new Error('Resource creation failed');
+    }
+    return resource;
+  } catch (error) {
+    // 4. ROLLBACK: Restore chips if resource creation failed
+    console.error('[createBillableResource] Creation failed, rolling back chip deduction');
+    await client.models.UserProfile.update({
+      id: userProfile.id,
+      chipsBalance: freshBalance, // Restore original balance
+    });
+    throw error;
+  }
+};
+
+// ❌ WRONG - Create resource first, then charge (allows free resources on billing failure)
+const createBillableResource = async (cost: number, userProfile: UserProfileModel) => {
+  // Resource created but user might not be charged if update fails!
+  const resource = await client.models.Resource.create({ ... });
+  
+  await client.models.UserProfile.update({
+    id: userProfile.id,
+    chipsBalance: userProfile.chipsBalance - cost, // May fail, resource already exists
+  });
+  
+  return resource;
+};
+```
+
+**Resources Using This Pattern:**
+- `CreateRideWizard.tsx` - Ride creation (deduct chips, create event, rollback on failure)
+
+## Pattern 3: Terms Gate
+
+```typescript
+import { useTermsGate } from '../hooks/useTermsGate';
+
+const { checkTermsBeforeAction } = useTermsGate(userProfile);
+
+// Before actions requiring terms acceptance
+if (!checkTermsBeforeAction()) {
+  setShowTermsModal(true);
+  return;
+}
+
+// Proceed with action
+```
+
+## Pattern 4: Toast Notifications
+
+```typescript
+import { showSuccessToast, showErrorToast, showInfoToast, showWarningToast } from '../utils/toast';
+
+// Success with default timing
+showSuccessToast('Profile updated successfully!');
+
+// Error with default timing
+showErrorToast('Failed to update profile.');
+
+// Custom options
+showSuccessToast('Pot collected!', { autoClose: 5000 });
+
+// Dynamic content
+showSuccessToast(`${formatCurrency(amount)} added to your chips`);
+
+// For confirmations, use window.confirm
+// Event deletion with confirmation
+if (window.confirm('Are you sure you want to delete this event?')) {
+  await cascadeDeleteEvent(eventId);
+}
+
+// For hosted rides, use DeleteRideConfirmationModal with summary
+import { summarizeEventDeletion } from '../../utils/cascadeDeleteEvent';
+
+const summary = await summarizeEventDeletion(eventId);
+// Show modal with summary.cards, summary.submittedHands, etc.
+
+// ❌ NEVER use alert() except for critical blocking errors
+```
+
+## Pattern 5: Error Handling
+
+```typescript
+import { handleError } from './utils/errorHandler';
+
+try {
+  // Amplify API call
+  const { data, errors } = await client.models.Card.create({...});
+  
+  // CRITICAL: Explicit error checking (Amplify doesn't throw!)
+  if (!data || (errors && errors.length > 0)) {
+    throw new Error(`Card creation failed: ${errors?.[0]?.message}`);
+  }
+  
+  showSuccessToast('Card created successfully!');
+} catch (error) {
+  handleError(error, { 
+    context: 'Card Creation', 
+    userId: user.id 
+  });
+  showErrorToast('Failed to create card. Please try again.');
+}
+```
+
+## Pattern 6: Component Lazy Loading
+
+```typescript
+// In PokerRideApp.tsx
+const HomePage = React.lazy(() => import('./components/HomePage'));
+const ParticipantView = React.lazy(() => import('./components/ParticipantView'));
+const ResultsPage = React.lazy(() => import('./components/ResultsPage'));
+const MyAccountView = React.lazy(() => import('./components/MyAccountView'));
+
+// Usage with Suspense
+<Suspense fallback={<LoadingFallback />}>
+  {view === 'home' && <HomePage {...homeProps} />}
+  {view === 'participant' && <ParticipantView {...participantProps} />}
+  {view === 'results' && <ResultsPage {...resultsProps} />}
+  {view === 'account' && <MyAccountView {...accountProps} />}
+</Suspense>
+```
+
+## Pattern 7: Custom Hook with State
+
+```typescript
+export function useUnifiedTimer(eventEndTime: string | null) {
+  const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
+  const [isExpired, setIsExpired] = useState(false);
+
+  useEffect(() => {
+    if (!eventEndTime) return;
+
+    const updateTimer = () => {
+      const now = Date.now();
+      const end = new Date(eventEndTime).getTime();
+      const remaining = Math.max(0, end - now);
+
+      setTimeRemaining(remaining);
+      setIsExpired(remaining === 0);
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+
+    return () => clearInterval(interval);
+  }, [eventEndTime]);
+
+  return { timeRemaining, isExpired };
+}
+```
+
+## Pattern 8: Modal State Management
+
+```typescript
+const [showModal, setShowModal] = useState(false);
+const [modalData, setModalData] = useState<ModalData | null>(null);
+
+const openModal = (data: ModalData) => {
+  setModalData(data);
+  setShowModal(true);
+};
+
+const closeModal = () => {
+  setShowModal(false);
+  setModalData(null);
+};
+
+// In JSX
+{showModal && modalData && (
+  <Modal onClose={closeModal}>
+    <ModalContent data={modalData} />
+  </Modal>
+)}
+```
+
+## Pattern 9: Form Validation with Zod
+
+```typescript
+import { z } from 'zod';
+
+const eventSchema = z.object({
+  title: z.string().min(3, 'Title must be at least 3 characters'),
+  maxCardsPerHand: z.number().min(5).max(7),
+  eventEndTime: z.string().datetime(),
+});
+
+try {
+  const validated = eventSchema.parse(formData);
+  // Proceed with validated data
+} catch (error) {
+  if (error instanceof z.ZodError) {
+    showErrorToast(error.errors[0].message);
+  }
+}
+```
+
+## Pattern 10: Conditional Rendering with Loading States
+
+```typescript
+if (loading) {
+  return <LoadingFallback />;
+}
+
+if (error) {
+  return (
+    <div className="text-center text-red-600">
+      <p>Failed to load data</p>
+      <button onClick={retry}>Retry</button>
+    </div>
+  );
+}
+
+if (!data || data.length === 0) {
+  return <EmptyState message="No events found" />;
+}
+
+return <DataDisplay data={data} />;
+```
+
+## Pattern 11: Geolocation for Mapped Rides
+
+```typescript
+import { useGeolocation } from '../hooks/useGeolocation';
+import { isWithinRadius } from '../utils/geoUtils';
+
+const { position, error, getCurrentPosition, isSupported } = useGeolocation();
+
+// Request location on mount
+useEffect(() => {
+  if (isSupported) {
+    getCurrentPosition();
+  }
+}, [isSupported, getCurrentPosition]);
+
+// Check if user is at checkpoint
+const checkProximity = (checkpoint: Checkpoint) => {
+  if (!position) return false;
+  
+  return isWithinRadius(
+    position.coords.latitude,
+    position.coords.longitude,
+    checkpoint.latitude,
+    checkpoint.longitude,
+    proximityRadius // typically 100 meters
+  );
+};
+```
+
+## Pattern 12: QR Code Verification
+
+```typescript
+import { validateQRCode, generateCheckpointQRCode } from '../utils/qrCodeGenerator';
+
+// Generate QR code for checkpoint
+const qrCode = generateCheckpointQRCode(eventId, checkpointSequence);
+// Returns: "poker-ride:{eventId}:{sequence}:{timestamp}"
+
+// Validate scanned QR code
+const handleQRScan = (scannedCode: string) => {
+  const isValid = validateQRCode(scannedCode, expectedEventId, expectedSequence);
+  
+  if (isValid) {
+    showSuccessToast('Verified at checkpoint!');
+    onDrawCard(checkpointSequence);
+  } else {
+    showErrorToast('Invalid QR code for this checkpoint.');
+  }
+};
+```
+
+## Pattern 13: Verification Method Handling
+
+```typescript
+import { deserializeVerificationMethods, serializeVerificationMethods } from '../utils/geoUtils';
+
+// Parse methods from event
+const methods = deserializeVerificationMethods(event.allowedVerificationMethods);
+// Returns: ['gps', 'qr', 'honor'] or ['honor'] if null/invalid
+
+// Try verification methods in priority order
+const verifyCheckpoint = (checkpoint: Checkpoint) => {
+  // 1. GPS verification (automatic if in range)
+  if (methods.includes('gps') && position) {
+    if (isWithinRadius(...)) {
+      return { verified: true, method: 'gps' };
+    }
+  }
+  
+  // 2. QR code (requires scan)
+  if (methods.includes('qr') && checkpoint.qrCode) {
+    openQRScanner(checkpoint);
+    return { verified: false, method: 'qr', pending: true };
+  }
+  
+  // 3. Honor system (always available if enabled)
+  if (methods.includes('honor')) {
+    return { verified: true, method: 'honor' };
+  }
+  
+  return { verified: false, method: null };
+};
+```
+
+## Pattern 14: Draft Save vs Publish
+
+```typescript
+// Save as draft (partial data allowed)
+const handleSaveDraft = async () => {
+  const eventData = {
+    ...formData,
+    status: 'draft' as const,
+  };
+  
+  // Checkpoints can be partially saved
+  await client.models.Event.create(eventData);
+  
+  // Save only checkpoints with valid coordinates
+  for (const cp of checkpoints) {
+    if (cp.latitude && cp.longitude) {
+      await client.models.Checkpoint.create({
+        eventId,
+        ...cp,
+      });
+    }
+  }
+};
+
+// Publish (full validation required)
+const handlePublish = async () => {
+  // Validate all checkpoints present
+  if (rideMode === 'mapped' && checkpoints.length < requiredCheckpoints) {
+    showErrorToast(`Add ${requiredCheckpoints} checkpoints before publishing`);
+    return;
+  }
+  
+  const eventData = {
+    ...formData,
+    status: 'upcoming' as const,
+  };
+  
+  await client.models.Event.create(eventData);
+};
+```

@@ -1,0 +1,142 @@
+---
+title: Data Models & Flow
+description: AWS Amplify data models and data flow patterns
+priority: 83
+---
+
+# Data Models & Flow
+
+## AWS Amplify Data Models
+
+| Model | Purpose | Key Fields |
+|-------|---------|-------------|
+| **UserProfile** | User info, terms, ratings, coop member | `userId`, `email`, `username`, `userType`, `driverRating`, `riderRating`, `termsAccepted`, `termsVersion`, `coopMemberNumber` |
+| **RideOffer** | Host’s ride offer | `hostId`, origin/destination lat/lng and addresses, `departureTime`, `availableSeats`, `seatsBooked`, `status`, `price`, `pickupRadius`, `dropoffRadius` |
+| **RideParticipant** | Rider joined to a ride | `rideOfferId`, `riderId`, `status` (pending/approved/declined/cancelled), pickup/dropoff lat/lng and addresses |
+| **RideRating** | Rating after ride or “know person” | `raterId`, `ratedUserId`, `rating` (1–5), `ratingType` (driver/rider), `ratingSource` (verified_ride/know_person), optional `rideOfferId`/`rideParticipantId` |
+| **RideRequest** | Rider’s ride request | `requesterId`, pickup/dropoff, `requestedTime`, `numberOfSeats`, `maximumAmount`, `status` |
+| **Connection** | Vouch between users | `fromUserId`, `toUserId`, `status` (pending/accepted) |
+| **HostPool** | Driver pool | `name`, `description`, `creatorId` |
+| **RiderPool** | Rider pool | `name`, `description`, `creatorId` |
+| **HostPoolMember** / **RiderPoolMember** | Pool membership | `hostPoolId`/`riderPoolId`, `userId`, `role` (member/admin) |
+| **HostPoolReview** / **RiderPoolReview** | Pool review | pool id, `reviewerId`, `rating`, `comment` |
+
+## Custom Query: Ride Planner (Nova)
+
+- **chatRidePlanner**(message, conversationId?) → ChatRidePlannerResponse (response, conversationId).
+- Handler: Lambda `novaAgentProxy`; auth: `allow.authenticated()`.
+
+## Authorization Model
+
+- **Guest read:** RideOffer, RideRequest use `allow.guest().to(['read'])` where appropriate for discovery.
+- **Authenticated:** All models use `allow.authenticated()` for create/read/update/delete as defined in schema.
+- **Application-level ownership:** Mutations must validate that the acting user owns the resource (e.g. hostId, riderId, requesterId, creatorId, fromUserId/toUserId) — see Mutation Security below.
+
+**CRITICAL:** Do not rely on `allow.owner()` for cross-user reads (e.g. listings); use `allow.authenticated()` or `allow.guest()` and enforce ownership in application code for mutations.
+
+## Security Requirements for Mutations
+
+**CRITICAL:** All mutation operations MUST validate ownership before executing.
+
+### UserProfile
+
+- Only the user whose `userId` matches the authenticated user may update/delete their profile.
+- Before update/delete: fetch profile, verify `existingProfile.userId === authenticatedUserId`.
+
+### RideOffer
+
+- Only the host may update/delete: verify `rideOffer.hostId` matches authenticated user’s profile id (or userId as used in your app).
+
+### RideParticipant
+
+- Host can update status (approve/decline); rider can cancel their own participation. Verify `rideOffer.hostId` or `riderId` matches authenticated user.
+
+### RideRequest
+
+- Only the requester may update/delete: verify `rideRequest.requesterId === authenticatedUserId` (or profile id).
+
+### Connection
+
+- Only fromUser can update/delete (e.g. withdraw); toUser can update status (accept). Verify `fromUserId` or `toUserId` matches authenticated user.
+
+### Pools and Reviews
+
+- Only creator (or pool admin) may update/delete pool; only reviewer may create/update their review. Validate creatorId/reviewerId against authenticated user.
+
+**Pattern:** Fetch existing record → verify ownership → then mutate. Never trust client-provided ids without server-side or client-side ownership check.
+
+## Data Relationships (Summary)
+
+```
+UserProfile
+  ├── hostedRides (RideOffer)
+  ├── joinedRides (RideParticipant)
+  ├── rideRequests (RideRequest)
+  ├── connectionsFrom / connectionsTo (Connection)
+  ├── createdHostPools / createdRiderPools
+  ├── hostPoolMemberships / riderPoolMemberships
+  ├── ratingsGiven / ratingsReceived (RideRating)
+  └── hostPoolReviews / riderPoolReviews
+
+RideOffer
+  ├── host (UserProfile)
+  ├── participants (RideParticipant)
+  └── ratings (RideRating)
+
+RideParticipant
+  ├── rideOffer (RideOffer)
+  ├── rider (UserProfile)
+  └── ratingsReceived (RideRating)
+```
+
+## RideOffer Status
+
+| Status | Description |
+|--------|-------------|
+| `available` | Open for bookings |
+| `matched` | Matched / in progress |
+| `active` | Ride in progress |
+| `completed` | Completed |
+| `cancelled` | Cancelled |
+
+## RideParticipant Status
+
+| Status | Description |
+|--------|-------------|
+| `pending` | Awaiting host approval |
+| `approved` | Approved |
+| `declined` | Declined by host |
+| `cancelled` | Cancelled |
+
+## Common Operations
+
+### User Profile Lookup/Create
+
+- After auth, get or create UserProfile by `userId` (Cognito sub). Set email, username, termsAccepted, termsVersion, etc.
+
+### Create RideOffer
+
+- Require hostId = authenticated user’s profile id; set origin/destination, departureTime, availableSeats, price, status (e.g. available).
+
+### Create RideParticipant
+
+- Require riderId = authenticated user’s profile id; set rideOfferId, status: pending (or approved if no approval flow).
+
+### Create RideRating
+
+- Require raterId = authenticated user; set ratedUserId, rating, ratingType, ratingSource; optionally link rideOfferId/rideParticipantId for verified_ride.
+
+### List Rides for Map/Discovery
+
+- Query RideOffer (and optionally filter by status, date, location). Use limit to avoid full table scans; add filters in application code as needed.
+
+## Data Consistency Rules
+
+1. **Ownership:** All mutations validate hostId/riderId/requesterId/creatorId/reviewerId/fromUserId/toUserId against authenticated user.
+2. **Terms:** UserProfile.termsAccepted and termsVersion used for terms gate.
+3. **Timestamps:** Use ISO strings for datetime fields (e.g. departureTime, requestedTime, createdAt).
+4. **RideParticipant:** Only create/update with valid rideOfferId and riderId; enforce status transitions in app logic if needed.
+
+## Lambda / Custom Query Security
+
+- **novaAgentProxy:** Must verify JWT and that the caller is the authenticated user (no passing other users’ ids). See `18-lambda-security.mdc`.

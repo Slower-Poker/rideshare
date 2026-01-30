@@ -1,0 +1,86 @@
+---
+title: Quick Start
+description: Most common tasks and commands for RideShare development
+priority: 100
+---
+
+# Quick Start
+
+## Most Common Tasks
+
+**When user asks to...**
+
+| Task | Quick Action | Files to Check |
+|------|-------------|----------------|
+| Setup AWS credentials | Run `aws configure sso` (or project-specific profile) | See Authentication rules |
+| Check TypeScript errors | Run `npm run type-check` or `npx tsc --noEmit` (before committing!) | All `.ts` and `.tsx` files |
+| Fix authentication | Check SSO config | `amplify/auth/resource.ts`, `src/App.tsx` |
+| Add new component | Extract to separate file if >300 lines | `src/components/` |
+| Fix styling | Use only core Tailwind utilities | Any `.tsx` component file |
+| Modify data model | Update schema + redeploy | `amplify/data/resource.ts` |
+| Fix toast notifications | Use toast utilities, not alert() | `src/utils/toast.ts` |
+| Debug ride/map issues | Check geoUtils, mapUtils, activeRideStorage | `src/utils/geoUtils.ts`, `src/utils/activeRideStorage.ts` |
+
+## Quick Commands
+
+```bash
+# Development
+npm run dev                    # Start dev server
+
+# Amplify Backend (use project's AWS profile if configured)
+npm run amplify:sandbox
+
+# Code Quality (run before committing)
+npm run type-check              # Check TypeScript errors
+npm run lint                    # Run ESLint
+
+# Testing
+npm run test                    # Run Vitest unit tests
+npm run test:e2e                # Run Playwright E2E tests
+
+# Build & Deploy
+npm run build                   # Build for production
+npm run preview                 # Preview production build locally
+```
+
+**Note:** If the project uses a specific AWS profile for Amplify, add it to the `amplify:sandbox` script or pass `-- --profile YourProfile`.
+
+## Critical Files Map
+
+```
+src/
+  ├── App.tsx                    # Root: Auth + Amplify config + view routing
+  ├── components/
+  │   ├── HomePage.tsx           # Landing page
+  │   ├── BookaRide.tsx          # Book a ride flow
+  │   ├── BookRideDetails.tsx   # Ride details
+  │   ├── BookRideConfirm.tsx   # Booking confirmation
+  │   ├── BookaRideRequest.tsx   # Request a ride
+  │   ├── FindARideMap.tsx       # Find rides on map
+  │   ├── OfferaRide.tsx         # Offer a ride
+  │   ├── RideMapView.tsx        # Map view
+  │   ├── RidePlannerChat.tsx    # AI ride planner (Nova)
+  │   ├── PoolsView.tsx          # Driver/rider pools
+  │   ├── ConnectionsView.tsx    # Connections (vouches)
+  │   ├── MyAccountView.tsx      # User account + auth
+  │   ├── TermsPage.tsx          # Terms of service
+  │   ├── LicensePage.tsx        # License info
+  │   ├── ErrorBoundary.tsx      # Error handling
+  │   └── LoadingFallback.tsx    # Loading state
+  ├── utils/
+  │   ├── activeRideStorage.ts   # ⚠️ ONLY localStorage usage
+  │   ├── errorHandler.ts        # Centralized errors
+  │   ├── toast.ts               # User notifications
+  │   ├── geoUtils.ts            # GPS/distance
+  │   ├── mapUtils.ts            # Map helpers
+  │   ├── validation.ts          # Zod validation
+  │   └── trustApi.ts            # Trust/rating API
+  └── hooks/
+      ├── useTermsGate.ts        # Terms enforcement
+      └── useGeolocation.ts      # Device GPS
+
+amplify/
+  ├── auth/resource.ts           # SSO config
+  ├── data/resource.ts           # GraphQL schema
+  └── functions/                 # Lambda (e.g. novaAgentProxy)
+```

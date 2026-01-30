@@ -1,0 +1,248 @@
+---
+title: Amplify Gen 2 Best Practices
+description: Gen 2 only patterns - no Gen 1 code allowed
+priority: 90
+---
+
+# Amplify Gen 2 Best Practices
+
+## CRITICAL: Gen 2 Only
+
+This project uses **AWS Amplify Gen 2** exclusively. All code, suggestions, and implementations MUST follow Gen 2 patterns. (RideShare.Click schema uses RideOffer, UserProfile, RideParticipant, etc.; authorization and schema patterns below apply the same way.)
+
+## ✅ Gen 2 Correct Patterns
+
+### 1. Authentication Configuration
+
+**CORRECT (Gen 2):**
+```typescript
+// amplify/auth/resource.ts
+import { defineAuth, secret } from '@aws-amplify/backend';
+
+export const auth = defineAuth({
+  loginWith: {
+    email: true,
+    externalProviders: {
+      signInWithApple: {
+        clientId: secret('SIWA_CLIENT_ID'),
+        keyId: secret('SIWA_KEY_ID'),
+        privateKey: secret('SIWA_PRIVATE_KEY'),
+        teamId: secret('SIWA_TEAM_ID')
+      },
+      callbackUrls: ['https://rideshare.click/', 'http://localhost:5173/'],
+      logoutUrls: ['https://rideshare.click/', 'http://localhost:5173/']
+    }
+  }
+});
+```
+
+**WRONG (Gen 1):**
+```typescript
+// DON'T DO THIS - Gen 1 pattern
+Auth.configure({
+  oauth: {
+    domain: 'xxx.auth.ca-central-1.amazoncognito.com',
+    // ... manual configuration
+  }
+});
+```
+
+### 2. Data Schema Definition
+
+**CORRECT (Gen 2):**
+```typescript
+// amplify/data/resource.ts
+import { type ClientSchema, a, defineData } from '@aws-amplify/backend';
+
+const schema = a.schema({
+  Card: a.model({
+    cardValue: a.string().required(),
+    playerId: a.id().required(),
+    eventId: a.id().required(),
+    handId: a.id(),
+  })
+  .secondaryIndexes((index) => [
+    // GSI for efficient queries by eventId
+    index('eventId').sortKeys(['dealtAt']).queryField('listCardsByEvent'),
+    // GSI for efficient queries by handId
+    index('handId').sortKeys(['position']).queryField('listCardsByHand'),
+  ])
+  .authorization((allow) => [
+    allow.authenticated().to(['read', 'create']),
+  ])
+});
+
+export const data = defineData({ schema });
+```
+
+**WRONG (Gen 1):**
+```typescript
+// DON'T DO THIS - Gen 1 GraphQL schema
+type Card @model @auth(rules: [{ allow: owner }]) {
+  cardValue: String!
+}
+```
+
+### 2a. Global Secondary Indexes (GSIs) for Performance
+
+**CRITICAL:** Always add GSIs for frequently queried fields to avoid table scans.
+
+**CORRECT (Gen 2 with GSI):**
+```typescript
+SubmittedHand: a.model({
+  eventId: a.id().required(),
+  submittedAt: a.datetime().required(),
+  // ... other fields
+})
+.secondaryIndexes((index) => [
+  // GSI for efficient eventId queries (used in ResultsPage)
+  index('eventId').sortKeys(['submittedAt']).queryField('listSubmittedHandsByEvent'),
+])
+```
+
+**Usage:**
+```typescript
+// ✅ CORRECT - Uses GSI (fast, O(1) lookup)
+const { data: hands } = await client.models.SubmittedHand.listSubmittedHandsByEvent({
+  eventId: event.id,
+});
+
+// ❌ WRONG - Table scan (slow, O(n) scan)
+const { data: hands } = await client.models.SubmittedHand.list({
+  filter: { eventId: { eq: event.id } }
+});
+```
+
+**Best Practices:**
+- Add GSIs for fields used in filter queries (`eventId`, `handId`, etc.)
+- Use GSI query methods (`listByX`) instead of filtered `list()` calls
+- Include sort keys for efficient ordering
+- Check CloudWatch logs for table scans in production
+
+### 3. Backend Definition
+
+**CORRECT (Gen 2):**
+```typescript
+// amplify/backend.ts
+import { defineBackend } from '@aws-amplify/backend';
+import { auth } from './auth/resource';
+import { data } from './data/resource';
+
+const backend = defineBackend({
+  auth,
+  data,
+});
+```
+
+**WRONG (Gen 1):**
+```javascript
+// DON'T DO THIS - Gen 1 amplify/backend.js
+module.exports = { /* ... */ };
+```
+
+### 4. Secrets Management
+
+**CORRECT (Gen 2):**
+- Store secrets in **AWS Systems Manager Parameter Store**
+- Reference with `secret()` function in `amplify/auth/resource.ts`
+- Path format: `/amplify/{appId}/{branch}/SECRET_NAME`
+
+**WRONG (Gen 1 or bad practices):**
+- Hardcoded secrets in code
+- Environment variables in `.env` files
+- Manual Cognito Console configuration
+
+### 5. Deployment Commands
+
+**CORRECT (Gen 2):**
+```bash
+# Sandbox (development)
+npx ampx sandbox
+npm run amplify:sandbox -- --profile PowerUserAccess-058083005833
+
+# Sandbox delete
+npm run amplify:sandbox:delete -- --profile PowerUserAccess-058083005833
+
+# Production (via GitHub)
+git push origin main  # Auto-deploys via Amplify hosting
+```
+
+**WRONG (Gen 1):**
+```bash
+# DON'T USE THESE - Gen 1 commands
+amplify push
+amplify configure
+amplify env add
+```
+
+### 6. Authorization Patterns (For This Project)
+
+**CORRECT (for public leaderboard + optional login + security):**
+```typescript
+.authorization((allow) => [
+  allow.guest().to(['read']), // ✅ Public read access for unauthenticated users
+  allow.authenticated().to(['read', 'create', 'update', 'delete']),
+])
+```
+
+**Why:** 
+- Public leaderboard requires all users (authenticated and unauthenticated) can read data
+- Optional login feature allows unauthenticated browsing
+- Using `.owner()` causes global authorization conflicts
+
+**Models with Public Read Access (2025-12-02):**
+- `Event` - View ride details and leaderboards
+- `SubmittedHand` - View leaderboard submissions
+- `Card` - View cards in submitted hands
+- `UserProfile` - Display player names on leaderboard
+- `Checkpoint` - View ride checkpoint locations
+- `Pot` - View prize pot information
+
+**WRONG (causes conflicts in this app):**
+```typescript
+// DON'T USE - Causes authorization conflicts in this app
+.authorization((allow) => [
+  allow.owner().to(['read', 'create', 'update', 'delete']),
+])
+```
+
+**🚨 CRITICAL SECURITY REQUIREMENT (2025-01-XX):**
+
+While the schema allows `update`/`delete` for all authenticated users (required for public leaderboard functionality), **application code MUST validate ownership** before any mutation:
+
+- ✅ Schema allows `update`/`delete` for authenticated users (required for public leaderboard)
+- ✅ **Application code MUST validate ownership** before mutations (check `userId`/`playerId`/`organizerId`)
+- ✅ **Lambda functions MUST verify JWT tokens** and validate userId matches authenticated user
+- ❌ Never trust client-provided `userId`/`userProfileId` without verification
+
+**Why This Approach:**
+- Public leaderboard requires cross-user reads (schema must allow reads)
+- Schema-level restrictions would break public leaderboard functionality
+- Security is enforced at application layer (code + Lambda validation)
+- See `10-data-models.mdc` for mutation security patterns
+- See `18-lambda-security.mdc` for Lambda authentication validation
+
+**Note:** See `amplify/data/resource.ts` comments (lines 6-30) for detailed explanation.
+
+## 🚨 Gen 2 Anti-Patterns to AVOID
+
+| ❌ Don't Do (Gen 1/Wrong) | ✅ Do Instead (Gen 2) |
+|---------------------------|-----------------------|
+| `amplify push` | `npx ampx sandbox` |
+| `amplify configure` | `aws configure sso` |
+| Manual Cognito Console config | Use `amplify/auth/resource.ts` |
+| GraphQL `@model` directives | Use `a.schema()` with `a.model()` |
+| Hardcoded secrets | Use `secret()` with Parameter Store |
+| `allow.owner()` for leaderboard | Use `allow.authenticated()` |
+| Environment variables for secrets | AWS Parameter Store |
+| `Card.list({ filter: { eventId: { eq: ... } } })` | Use `Card.listCardsByEvent({ eventId: ... })` |
+| `PutIn.list({ filter: { eventId: { eq: ... } } })` | Use `PutIn.listPutInsByEvent({ eventId: ... })` |
+| `Pot.list({ filter: { eventId: { eq: ... } } })` | Use `Pot.listPotsByEvent({ eventId: ... })` |
+| Table scans (slow queries) | Add GSIs and use GSI query methods |
+
+## 📚 Official Documentation
+
+When uncertain, always refer to:
+- **Gen 2 Docs**: https://docs.amplify.aws/gen2/
+- **Auth Guide**: https://docs.amplify.aws/gen2/build-a-backend/auth
+- **Data Guide**: https://docs.amplify.aws/gen2/build-a-backend/data

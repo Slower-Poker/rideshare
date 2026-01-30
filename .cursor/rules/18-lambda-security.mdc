@@ -1,0 +1,280 @@
+---
+title: Lambda Function Security
+description: Security requirements for Lambda functions
+priority: 85
+---
+
+# Lambda Function Security
+
+## CRITICAL: Authentication Validation
+
+**ALL Lambda functions that accept user data MUST:**
+
+1. ✅ Extract and verify JWT token from Authorization header
+2. ✅ Validate that request `userId` matches authenticated user
+3. ✅ Never trust client-provided `userId`/`userProfileId` without verification
+4. ✅ Return generic error messages (log details server-side only)
+
+## Pattern for User-Facing Lambda Functions
+
+### Token Extraction and Verification
+
+```typescript
+import { CognitoJwtVerifier } from 'aws-jwt-verify';
+import type { Handler } from 'aws-lambda';
+
+// Initialize verifier (do this once, outside handler)
+const verifier = CognitoJwtVerifier.create({
+  userPoolId: process.env.COGNITO_USER_POOL_ID!,
+  tokenUse: 'id',
+  clientId: process.env.COGNITO_CLIENT_ID!,
+});
+
+export const handler: Handler = async (event) => {
+  // 1. Extract token from Authorization header
+  const authHeader = event.headers?.authorization || event.headers?.Authorization;
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return {
+      statusCode: 401,
+      headers: getCorsHeaders(),
+      body: JSON.stringify({ error: 'Unauthorized' }),
+    };
+  }
+
+  const token = authHeader.substring(7);
+
+  // 2. Verify token signature and expiration
+  let decodedToken;
+  try {
+    decodedToken = await verifier.verify(token);
+  } catch (error) {
+    console.error('Token verification failed:', error);
+    return {
+      statusCode: 401,
+      headers: getCorsHeaders(),
+      body: JSON.stringify({ error: 'Invalid token' }),
+    };
+  }
+
+  // 3. Extract authenticated user ID from token
+  const authenticatedUserId = decodedToken.sub; // Cognito user ID
+
+  // 4. Parse request body
+  const body = JSON.parse(event.body || '{}');
+  const { userId, userProfileId } = body;
+
+  // 5. Validate userId matches authenticated user
+  if (userId !== authenticatedUserId) {
+    console.warn(`[SECURITY] User ID mismatch: requested=${userId}, authenticated=${authenticatedUserId}`);
+    return {
+      statusCode: 403,
+      headers: getCorsHeaders(),
+      body: JSON.stringify({ error: 'Forbidden' }),
+    };
+  }
+
+  // 6. Optionally verify userProfileId belongs to authenticated user
+  // (Query UserProfile to ensure userProfileId.userId === authenticatedUserId)
+
+  // 7. Proceed with business logic...
+};
+```
+
+### Alternative: Using Amplify's Token Verification
+
+If using Amplify's built-in token verification:
+
+```typescript
+import { verifyToken } from '@aws-amplify/backend';
+
+// In handler
+try {
+  const decoded = await verifyToken(token);
+  const authenticatedUserId = decoded.sub;
+  // ... rest of validation
+} catch (error) {
+  return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized' }) };
+}
+```
+
+## Error Message Security
+
+**NEVER expose internal details in error responses:**
+
+```typescript
+// ❌ WRONG - Exposes internal details
+catch (error) {
+  return {
+    statusCode: 500,
+    body: JSON.stringify({ 
+      error: 'Failed to process',
+      message: error.message, // May contain stack traces, file paths, etc.
+    }),
+  };
+}
+
+// ✅ CORRECT - Generic error with error ID for support
+catch (error) {
+  const errorId = crypto.randomUUID();
+  console.error(`[ERROR][${errorId}]`, {
+    error: error.message,
+    stack: error.stack,
+    context: { /* relevant context */ },
+  });
+  
+  return {
+    statusCode: 500,
+    headers: getCorsHeaders(),
+    body: JSON.stringify({ 
+      error: 'Failed to process request',
+      errorId, // Include error ID for support, but not error details
+    }),
+  };
+}
+```
+
+## Input Validation
+
+**ALWAYS validate input types, ranges, and formats:**
+
+```typescript
+// Validate required fields (example: Ride Planner or custom handler)
+if (!userId || !message) {
+  return {
+    statusCode: 400,
+    body: JSON.stringify({ error: 'Missing required fields' }),
+  };
+}
+
+// Validate types and ranges as needed for your payload
+
+// Validate ranges
+if (price <= 0 || price > 10000) {
+  return {
+    statusCode: 400,
+    body: JSON.stringify({ error: 'Invalid price value' }),
+  };
+}
+
+// Validate URL format (prevent open redirect)
+const isValidUrl = (url: string): boolean => {
+  try {
+    const parsed = new URL(url);
+    return ['https://rideshare.click', 'https://www.rideshare.click'].includes(parsed.origin);
+  } catch {
+    return false;
+  }
+};
+
+if (!isValidUrl(successUrl) || !isValidUrl(cancelUrl)) {
+  return {
+    statusCode: 400,
+    body: JSON.stringify({ error: 'Invalid URL' }),
+  };
+}
+
+// Validate email format
+if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  return {
+    statusCode: 400,
+    body: JSON.stringify({ error: 'Invalid email format' }),
+  };
+}
+
+// Validate userId/userProfileId format
+if (!/^[a-zA-Z0-9_-]+$/.test(userId) || userId.length > 128) {
+  return {
+    statusCode: 400,
+    body: JSON.stringify({ error: 'Invalid userId format' }),
+  };
+}
+```
+
+## CORS Security
+
+**Always validate request origin in production:**
+
+```typescript
+const ALLOWED_ORIGINS = [
+  'https://rideshare.click',
+  'https://www.rideshare.click',
+  'https://main.d3tum5fq9u7q0a.amplifyapp.com',
+];
+
+function getCorsOrigin(requestOrigin: string | undefined): string {
+  const isProduction = process.env.AWS_EXECUTION_ENV?.includes('amplify') || 
+                       process.env.NODE_ENV === 'production';
+
+  if (!isProduction) {
+    // Development/sandbox - allow all origins
+    return '*';
+  }
+
+  // Production - check against allowed list
+  if (requestOrigin && ALLOWED_ORIGINS.includes(requestOrigin)) {
+    return requestOrigin;
+  }
+
+  // Default to primary domain for unknown origins
+  return 'https://rideshare.click';
+}
+```
+
+## Security Headers
+
+**Always include security headers in responses:**
+
+```typescript
+function getSecurityHeaders(requestOrigin?: string): Record<string, string> {
+  return {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': getCorsOrigin(requestOrigin),
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Credentials': 'true',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'X-XSS-Protection': '1; mode=block',
+    'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+  };
+}
+```
+
+## Functions Requiring Authentication Validation
+
+| Function | Status | Location |
+|----------|--------|----------|
+| `novaAgentProxy` | ✅ Validate JWT and userId in request | `amplify/functions/novaAgentProxy/handler.ts` |
+| Other Lambdas | Apply same patterns: JWT + ownership validation | Per function |
+
+## Webhook Functions (Different Pattern)
+
+**For webhook functions (like Stripe webhook), use webhook signature verification instead:**
+
+```typescript
+// ✅ CORRECT - Verify webhook signature
+const stripe = new Stripe(stripeSecretKey, { apiVersion: '2025-02-24.acacia' });
+
+const signature = event.headers['stripe-signature'];
+if (!signature) {
+  return { statusCode: 400, body: JSON.stringify({ error: 'Missing signature' }) };
+}
+
+try {
+  const stripeEvent = stripe.webhooks.constructEvent(
+    event.body,
+    signature,
+    process.env.STRIPE_WEBHOOK_SECRET!
+  );
+  // Process webhook...
+} catch (err) {
+  return { statusCode: 400, body: JSON.stringify({ error: 'Invalid signature' }) };
+}
+```
+
+## Related Documentation
+
+- `04-amplify-gen2.mdc` - Authorization patterns
+- `10-data-models.mdc` - Data model security requirements
+- `02-critical-constraints.mdc` - Lambda security constraints

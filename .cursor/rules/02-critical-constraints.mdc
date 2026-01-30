@@ -1,0 +1,192 @@
+---
+title: Critical Constraints
+description: Non-negotiable constraints that MUST be followed
+priority: 95
+---
+
+# Critical Constraints
+
+## 🚨 STORAGE LIMITATIONS (EXTREMELY IMPORTANT)
+
+**THE RULE:**
+```
+localStorage is ONLY used for:
+1. Active ride persistence (activeRideStorage.ts)
+2. PWA functionality (install prompts, service worker state, offline indicators)
+Everything else uses React state + AWS Amplify Data backend
+```
+
+### ✅ ALLOWED
+- `src/utils/activeRideStorage.ts` - Active ride persistence across page refreshes
+- **PWA-related localStorage** - Service worker state, install prompt dismissal, offline indicators
+  - Examples: `pwa-install-dismissed`, `pwa-update-notified`, `pwa-offline-state`
+  - Use `rideshare_` prefix for PWA keys (e.g., `rideshare_pwa-install-dismissed`) if adding new keys
+
+### ❌ FORBIDDEN
+- `sessionStorage` - NEVER use
+- `localStorage` for application state (user data, ride offers, etc.) - NEVER use (except activeRideStorage)
+- Browser IndexedDB - NEVER use
+- Browser cookies for state - NEVER use
+
+### WHY
+- Backend (Amplify Data) is source of truth for persisted data
+- Active ride state in localStorage is for recovery only; primary state is in backend
+- PWA localStorage is for browser/device-specific UI state only, not application data
+
+## 🎨 STYLING CONSTRAINTS
+
+**ONLY use Tailwind's core utility classes** - No custom classes, no @apply directives
+
+### ✅ ALLOWED
+
+```tsx
+<div className="flex items-center justify-between p-4 bg-blue-500 rounded-lg">
+<div className="text-lg font-bold text-white md:text-xl lg:text-2xl">
+```
+
+### ❌ FORBIDDEN
+
+```tsx
+<div className="custom-card">     // Custom class
+<div className="w-[123px]">       // Arbitrary values (use w-32, w-40, etc.)
+@apply flex items-center;         // @apply directive in CSS
+```
+
+**WHY:** No Tailwind compiler access - stick to pre-defined utilities
+
+## 🔐 AUTHENTICATION CONSTRAINTS
+
+**User authentication MUST use SSO** - Email/password is deprecated
+
+### ⚠️ OPTIONAL LOGIN (2025-12-02)
+
+**The app supports optional login - authentication is not required at app entry.**
+
+**Key Points:**
+- ✅ App loads without authentication requirement (`user` can be `null`)
+- ✅ Login UI is in My Account page (not at app entry)
+- ✅ Unauthenticated users can browse, view leaderboards, preview modals
+- ✅ Authentication required for: booking rides, offering rides, Ride Planner chat, pools, connections
+- ✅ Handle `user: AuthUser | null` throughout the app
+- ✅ Check `userProfile` before allowing restricted actions
+
+**Implementation:**
+```typescript
+// App.tsx - No Authenticator wrapper
+const [user, setUser] = useState<AuthUser | null>(null);
+return <AppContent user={user} onAuthChange={checkAuthStatus} />;  // View routing in App.tsx
+
+// MyAccountView.tsx - Login UI for unauthenticated users
+{!user && (
+  <Authenticator socialProviders={['google', 'apple']} />
+)}
+```
+
+### Primary Methods
+- Google Sign-In (preferred)
+- Apple Sign-In (iOS/macOS users)
+
+### Implementation
+```typescript
+// MyAccountView.tsx - Login UI location
+<Authenticator socialProviders={['google', 'apple']} />
+```
+
+### ❌ DEPRECATED
+- Email/password authentication
+- Custom auth flows
+- Manual user management
+- Authentication gate at app entry (removed 2025-12-02)
+
+## 📱 PWA CONSTRAINTS
+
+**This is a Progressive Web App** - All changes must preserve PWA functionality
+
+### Service Worker Rules
+
+```typescript
+// vite.config.ts PWA configuration
+navigateFallback: '/index.html',        // ✅ REQUIRED - SPA routing offline
+navigateFallbackDenylist: [/^\/api/],   // ✅ REQUIRED - API calls must fail gracefully
+skipWaiting: true,                       // ✅ REQUIRED - New SW takes over immediately
+clientsClaim: true,                      // ✅ REQUIRED - SW controls all tabs
+```
+
+### ✅ ALLOWED
+- Cache static assets (CacheFirst)
+- Cache fonts (CacheFirst with long TTL)
+- Cache API responses for offline viewing (NetworkFirst with short TTL)
+- `navigateFallback` to `/index.html` for SPA route handling
+
+### ❌ FORBIDDEN
+- `navigateFallback: '/offline.html'` - Breaks SPA routing
+- Caching Cognito/OAuth endpoints - Security risk
+- Allowing mutations while offline - Data integrity risk
+- Removing `skipWaiting` or `clientsClaim` - Breaks update flow
+
+### Offline Behavior
+- **Read operations**: Show cached data with stale indicator
+- **Write operations**: MUST fail gracefully with user feedback
+- **Data mutations**: Require connectivity; fail gracefully offline with user feedback
+- **OAuth flows**: Go to external domains (Cognito, Apple, Google) - unaffected by SW
+
+### WHY
+- OAuth redirects to external domains bypass service worker entirely
+- SPA routing requires `index.html` fallback, not static offline page
+
+## 🔄 PWA UPDATE HANDLING (If Implemented)
+
+If the app has PWA update detection (`src/pwa.ts`, `UpdateNotification`, etc.):
+- Never remove the update notification flow; users must be able to refresh to get new versions
+- Never skip user confirmation before refresh (avoids data loss)
+
+## 🔐 LAMBDA FUNCTION SECURITY
+
+**CRITICAL:** All Lambda functions accepting user data MUST validate authentication:
+
+- ✅ Extract JWT token from Authorization header
+- ✅ Verify token signature and expiration
+- ✅ Validate request `userId` matches authenticated user
+- ✅ Never trust client-provided `userId`/`userProfileId` without verification
+- ✅ Return generic error messages (log details server-side only)
+- ✅ Validate all input types, ranges, and formats
+- ✅ Include security headers in all responses
+
+**Pattern:**
+```typescript
+// 1. Extract token
+const authHeader = event.headers?.authorization;
+if (!authHeader?.startsWith('Bearer ')) {
+  return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized' }) };
+}
+
+// 2. Verify token
+const decoded = await verifyCognitoToken(authHeader.substring(7));
+const authenticatedUserId = decoded.sub;
+
+// 3. Validate userId matches
+if (body.userId !== authenticatedUserId) {
+  return { statusCode: 403, body: JSON.stringify({ error: 'Forbidden' }) };
+}
+```
+
+**Apply to:** Any Lambda that accepts user-scoped data (e.g. `novaAgentProxy` for Ride Planner chat). Validate JWT and that request `userId`/identifiers match the authenticated user.
+
+**See `18-lambda-security.mdc` for complete patterns and examples.**
+
+## 📋 PRIORITY CHECKLIST
+
+Always prioritize:
+
+1. ✅ Amplify Gen 2 patterns ONLY (no Gen 1 patterns)
+2. ✅ Apple HIG compliance for all buttons and UI elements (44×44px touch targets)
+3. ✅ SSO authentication (Google + Apple); optional login supported
+4. ✅ Toast notifications (NOT alert())
+5. ✅ Core Tailwind utilities only
+6. ✅ localStorage ONLY for active ride storage (and PWA keys if used)
+7. ✅ Explicit error checking (Amplify doesn't throw)
+8. ✅ `allow.authenticated()` / `allow.guest()` as appropriate (see data models)
+9. ✅ AWS Parameter Store (or Amplify `secret()`) for secrets, not env vars
+10. ✅ PWA service worker uses `/index.html` fallback (never `/offline.html`) if PWA is used
+11. ✅ **Lambda Security**: All Lambda functions must verify JWT and validate userId/ownership (see `18-lambda-security.mdc`)
+12. ✅ **Mutation Security**: All data mutations must validate ownership (hostId/riderId/requesterId etc. matches authenticated user) (see `10-data-models.mdc`)

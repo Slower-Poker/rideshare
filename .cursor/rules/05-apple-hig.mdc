@@ -1,0 +1,130 @@
+---
+title: Apple Human Interface Guidelines (HIG) Compliance
+description: Apple HIG requirements for buttons and UI elements
+priority: 85
+---
+
+# Apple Human Interface Guidelines (HIG) Compliance
+
+## Sign in with Apple Button Requirements
+
+**CRITICAL:** The "Sign in with Apple" button has strict design requirements that CANNOT be violated.
+
+### Official Button Requirements
+
+#### 1. Use Amplify's Official Button
+
+```typescript
+// ✅ CORRECT - Let Amplify handle Apple button
+<Authenticator socialProviders={['google', 'apple']}>
+```
+
+#### 2. Do NOT Override Apple Button Styles
+
+```css
+/* ❌ AVOID - Don't override Apple's official button */
+button[data-amplify-social-provider="apple"] {
+  background-color: red; /* FORBIDDEN */
+  color: blue; /* FORBIDDEN */
+}
+```
+
+#### 3. Minimum Touch Target: 44×44 points
+
+```css
+/* ✅ CORRECT - Our implementation */
+button[data-amplify-social-provider] {
+  min-height: 2.75rem; /* 44px ✅ */
+}
+```
+
+#### 4. Allowed Custom Styling
+
+```css
+/* ✅ ALLOWED - Non-visual enhancements */
+button[data-amplify-social-provider] {
+  border-radius: 0.75rem; /* OK */
+  transition: transform 0.2s ease; /* OK */
+}
+
+button[data-amplify-social-provider]:hover {
+  transform: translateY(-1px); /* OK */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); /* OK */
+}
+```
+
+### Apple HIG Requirements Checklist
+
+- [ ] **Button Logo**: Use official Apple logo (handled by Amplify)
+- [ ] **Button Text**: Must say "Sign in with Apple" or "Sign up with Apple" (handled by Amplify)
+- [ ] **Touch Target**: Minimum 44×44 points ✅ (implemented)
+- [ ] **Colors**: 
+  - Black button on light backgrounds (Amplify default)
+  - White button on dark backgrounds (Amplify default)
+- [ ] **No Custom Icons**: Cannot replace or modify Apple logo
+- [ ] **No Custom Text**: Cannot change button text
+- [ ] **Corner Radius**: Can customize (our implementation: 12px)
+- [ ] **Hover Effects**: Can add subtle hover effects ✅ (implemented)
+
+### Implementation in this app
+
+**Current Status:**
+- ✅ Using `@aws-amplify/ui-react` Authenticator with `socialProviders={['google', 'apple']}`
+- ✅ Minimum touch target of 44px (`min-height: 2.75rem`)
+- ✅ Subtle hover effects (translateY, box-shadow)
+- ✅ Appropriate border-radius (0.75rem)
+
+**Caution Areas:**
+- Custom CSS in `src/LoginPage.css` should NOT override:
+  - Apple button background color
+  - Apple button text color
+  - Apple logo
+  - Button text content
+
+## General Button Guidelines (Apple HIG)
+
+### 1. Action-Oriented Labels
+- Use verbs: "Submit", "Join", "Create", "Delete"
+- Title-case capitalization
+- Keep labels short and clear
+
+### 2. Visual Hierarchy
+- Primary actions: Filled buttons with solid background
+- Secondary actions: Outlined or text-only buttons
+- Destructive actions: Red color (#d32f2f)
+
+### 3. Minimum Touch Targets
+
+```css
+/* ✅ ALL buttons must meet 44×44 minimum */
+button {
+  min-height: 44px; /* or 2.75rem */
+  min-width: 44px;
+}
+```
+
+### 4. Consistent Styling
+- Same style for same actions throughout app
+- Clear visual feedback on interaction (hover, active states)
+- Accessibility: sufficient color contrast
+
+## When Adding New UI Elements
+
+**Before implementing, verify:**
+1. Does it follow Apple HIG for iOS/web?
+2. Is the touch target at least 44×44 points?
+3. Are colors accessible (WCAG AA contrast ratio)?
+4. Does it use action-oriented language?
+5. Is the visual hierarchy clear?
+
+**For Apple-specific features (Sign in with Apple, Apple Pay, etc.):**
+1. ALWAYS use official Amplify/Apple components
+2. Do NOT create custom versions
+3. Follow Apple's exact specifications
+4. Test on actual iOS devices when possible
+
+## Reference Links
+
+- **Apple HIG**: https://developer.apple.com/design/human-interface-guidelines
+- **Sign in with Apple Guidelines**: https://developer.apple.com/design/human-interface-guidelines/sign-in-with-apple
+- **Amplify UI Components**: https://ui.docs.amplify.aws/react/connected-components/authenticator
