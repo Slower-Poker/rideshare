@@ -1,4 +1,4 @@
-import { Car, Map, Spool, User } from 'lucide-react';
+import { Car, Map, Users, User } from 'lucide-react';
 import type { SharedProps } from '../types';
 
 export function HomePage({ setCurrentView, user }: SharedProps) {
@@ -27,7 +27,7 @@ export function HomePage({ setCurrentView, user }: SharedProps) {
               className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:text-primary-600 transition-colors"
               aria-label="View rider and driver pools"
             >
-              <Spool className="w-5 h-5" />
+              <Users className="w-5 h-5" />
               <span className="hidden sm:inline">Pool</span>
             </button>
             

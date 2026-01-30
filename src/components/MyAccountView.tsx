@@ -1,6 +1,6 @@
 import { Authenticator, useAuthenticator } from '@aws-amplify/ui-react';
 import { signOut } from 'aws-amplify/auth';
-import { ArrowLeft, LogOut, User, Settings, Wallet, Activity, Info, FileText, CheckCircle2, Spool, UserPlus } from 'lucide-react';
+import { ArrowLeft, LogOut, User, Settings, Wallet, Activity, Info, FileText, CheckCircle2, Users, UserPlus } from 'lucide-react';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { client } from '../client';
 import type { Schema } from '../../amplify/data/resource';
@@ -213,7 +213,7 @@ function AccountContent({
               onClick={() => setCurrentView('pools')}
               className="flex items-center gap-2 p-3 bg-gray-50 hover:bg-gray-100 rounded-lg text-left transition-colors"
             >
-              <Spool className="w-5 h-5 text-primary-600" />
+              <Users className="w-5 h-5 text-primary-600" />
               <span className="font-medium text-gray-900">Pools</span>
               <span className="text-sm text-gray-500 ml-auto">Rider & Driver pools</span>
             </button>
