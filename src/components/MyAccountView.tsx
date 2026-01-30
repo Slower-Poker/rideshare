@@ -121,235 +121,201 @@ function AccountContent({
   const isVerified = userProfile?.verifiedRideHost === true;
 
   return (
-    <div className="space-y-6">
-      {/* Profile and Account Section */}
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <User className="w-6 h-6 text-primary-600" />
-          <h2 className="text-2xl font-bold text-gray-900">Profile and Account</h2>
-        </div>
-        
-        <div className="flex items-center gap-4 mb-6 pb-6 border-b border-gray-200">
-          <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center">
-            <User className="w-8 h-8 text-primary-600" />
+    <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+      {/* Compact profile block */}
+      <div className="p-4 sm:p-6 pb-4 border-b border-gray-200 bg-gray-50/50">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 sm:w-14 sm:h-14 flex-shrink-0 bg-primary-100 rounded-full flex items-center justify-center">
+            <User className="w-6 h-6 sm:w-7 sm:h-7 text-primary-600" />
           </div>
-          <div className="flex-1">
-            <div className="flex items-center gap-2">
-              <h3 className="text-xl font-semibold text-gray-900">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-lg sm:text-xl font-semibold text-gray-900 truncate">
                 {displayUser?.username || 'User'}
-              </h3>
+              </h2>
               {isVerified && (
-                <div className="flex items-center gap-1 text-green-600" title="Verified Ride Host">
-                  <CheckCircle2 className="w-5 h-5" />
-                  <span className="text-sm font-medium">Verified Ride Host</span>
-                </div>
+                <span className="flex items-center gap-1 text-green-600 text-xs sm:text-sm font-medium" title="Verified Ride Host">
+                  <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                  <span>Verified</span>
+                </span>
               )}
             </div>
-            <p className="text-gray-600">{displayUser?.email || ''}</p>
+            <p className="text-sm text-gray-600 truncate">{displayUser?.email || ''}</p>
           </div>
         </div>
-
-        {/* Coop Member Number */}
-        <div className="mb-6 pb-6 border-b border-gray-200">
-          <div className="flex items-center justify-between mb-2">
-            <label className="block text-sm font-medium text-gray-700">
-              Coop Member Number
-            </label>
-          </div>
-          <div>
-            <p className="text-sm text-gray-900">
-              {userProfile?.coopMemberNumber ? (
-                <span className="font-medium">
-                  {formatCoopMemberNumber(userProfile.coopMemberNumber)}
-                </span>
-              ) : (
-                <span className="text-gray-500 italic">Assigning...</span>
-              )}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              Assigned automatically by the system. Required for offering/finding rides.
-            </p>
-          </div>
-        </div>
-
-        {/* Trust ratings (5/5 default) */}
-        <div className="grid grid-cols-2 gap-4 mb-6">
-          <div className="bg-gray-50 rounded-lg p-4 text-center">
-            <p className="text-3xl font-bold text-primary-600">
-              {displayDriverRating(userProfile).toFixed(1)}
-            </p>
-            <p className="text-sm text-gray-600">Driver rating</p>
-          </div>
-          <div className="bg-gray-50 rounded-lg p-4 text-center">
-            <p className="text-3xl font-bold text-primary-600">
-              {displayRiderRating(userProfile).toFixed(1)}
-            </p>
-            <p className="text-sm text-gray-600">Rider rating</p>
-          </div>
-        </div>
-
-        {/* User Stats */}
-        <div className="grid grid-cols-2 gap-4 mb-6">
-          <div className="bg-gray-50 rounded-lg p-4 text-center">
-            <p className="text-3xl font-bold text-primary-600">
-              {userProfile?.totalRidesAsHost ?? 0}
-            </p>
-            <p className="text-sm text-gray-600">Rides Offered</p>
-          </div>
-          <div className="bg-gray-50 rounded-lg p-4 text-center">
-            <p className="text-3xl font-bold text-primary-600">
-              {userProfile?.totalRidesAsRider ?? 0}
-            </p>
-            <p className="text-sm text-gray-600">Rides Taken</p>
-          </div>
-        </div>
-
-        {/* Trust & Pools */}
-        <div className="mb-6 pb-6 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900 mb-3">Trust & Pools</h2>
-          <div className="flex flex-col gap-2">
-            <button
-              type="button"
-              onClick={() => setCurrentView('pools')}
-              className="flex items-center gap-2 p-3 bg-gray-50 hover:bg-gray-100 rounded-lg text-left transition-colors"
-            >
-              <Users className="w-5 h-5 text-primary-600" />
-              <span className="font-medium text-gray-900">Pools</span>
-              <span className="text-sm text-gray-500 ml-auto">Rider & Driver pools</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setCurrentView('connections')}
-              className="flex items-center gap-2 p-3 bg-gray-50 hover:bg-gray-100 rounded-lg text-left transition-colors"
-            >
-              <UserPlus className="w-5 h-5 text-primary-600" />
-              <span className="font-medium text-gray-900">Connections</span>
-              <span className="text-sm text-gray-500 ml-auto">Know-person ratings</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Sign Out Button */}
-        <button
-          onClick={handleSignOut}
-          className="w-full flex items-center justify-center gap-2 bg-red-600 text-white py-3 px-6 rounded-lg hover:bg-red-700 transition-colors"
-          aria-label="Sign out of your account"
+        {/* Coop Member Number - one line with tooltip */}
+        <div
+          className="mt-3 pt-3 border-t border-gray-200"
+          title="Assigned automatically by the system. Required for offering/finding rides."
         >
-          <LogOut className="w-5 h-5" />
-          Sign Out
+          <p className="text-sm text-gray-700">
+            <span className="font-medium text-gray-900">Coop Member Number </span>
+            {userProfile?.coopMemberNumber ? (
+              <span className="font-medium text-primary-700">
+                {formatCoopMemberNumber(userProfile.coopMemberNumber)}
+              </span>
+            ) : (
+              <span className="text-gray-500 italic">Assigning...</span>
+            )}
+          </p>
+        </div>
+      </div>
+
+      {/* Stats - single horizontal row */}
+      <div className="flex overflow-x-auto gap-2 sm:gap-4 px-4 sm:px-6 py-4 border-b border-gray-200 bg-white">
+        <div className="flex-shrink-0 w-[72px] sm:w-20 text-center py-2 px-1 rounded-lg bg-gray-50">
+          <p className="text-xl sm:text-2xl font-bold text-primary-600 leading-tight">
+            {displayDriverRating(userProfile).toFixed(1)}
+          </p>
+          <p className="text-xs text-gray-600 mt-0.5">Driver</p>
+        </div>
+        <div className="flex-shrink-0 w-[72px] sm:w-20 text-center py-2 px-1 rounded-lg bg-gray-50">
+          <p className="text-xl sm:text-2xl font-bold text-primary-600 leading-tight">
+            {displayRiderRating(userProfile).toFixed(1)}
+          </p>
+          <p className="text-xs text-gray-600 mt-0.5">Rider</p>
+        </div>
+        <div className="flex-shrink-0 w-[72px] sm:w-20 text-center py-2 px-1 rounded-lg bg-gray-50">
+          <p className="text-xl sm:text-2xl font-bold text-primary-600 leading-tight">
+            {userProfile?.totalRidesAsHost ?? 0}
+          </p>
+          <p className="text-xs text-gray-600 mt-0.5">Offered</p>
+        </div>
+        <div className="flex-shrink-0 w-[72px] sm:w-20 text-center py-2 px-1 rounded-lg bg-gray-50">
+          <p className="text-xl sm:text-2xl font-bold text-primary-600 leading-tight">
+            {userProfile?.totalRidesAsRider ?? 0}
+          </p>
+          <p className="text-xs text-gray-600 mt-0.5">Taken</p>
+        </div>
+      </div>
+
+      {/* Primary actions - Pools & Connections */}
+      <div className="p-4 sm:p-6 space-y-2 border-b border-gray-200">
+        <button
+          type="button"
+          onClick={() => setCurrentView('pools')}
+          className="w-full flex items-center gap-3 p-3 min-h-[44px] bg-gray-50 hover:bg-gray-100 rounded-lg text-left transition-colors"
+          aria-label="Rider and driver pools"
+        >
+          <Users className="w-5 h-5 text-primary-600 flex-shrink-0" />
+          <span className="font-medium text-gray-900">Pools</span>
+          <span className="text-sm text-gray-500 ml-auto hidden sm:inline">Rider & Driver pools</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setCurrentView('connections')}
+          className="w-full flex items-center gap-3 p-3 min-h-[44px] bg-gray-50 hover:bg-gray-100 rounded-lg text-left transition-colors"
+          aria-label="Connections and know-person ratings"
+        >
+          <UserPlus className="w-5 h-5 text-primary-600 flex-shrink-0" />
+          <span className="font-medium text-gray-900">Connections</span>
+          <span className="text-sm text-gray-500 ml-auto hidden sm:inline">Know-person ratings</span>
         </button>
       </div>
 
-      {/* Settings Section */}
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <Settings className="w-6 h-6 text-primary-600" />
-          <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
-        </div>
-        <p className="text-gray-600 mb-4">
-          Manage your preferences, notifications, and privacy settings.
-        </p>
-        
-        {/* Distance Unit Preference */}
-        <div className="mt-4 pt-4 border-t border-gray-200">
-          <label className="block text-sm font-medium text-gray-700 mb-3">
-            Distance Unit
-          </label>
-          <p className="text-sm text-gray-600 mb-3">
-            Choose your preferred unit for displaying distances (kilometers or miles).
-          </p>
-          <div className="flex gap-4">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="distanceUnit"
-                value="km"
-                checked={distanceUnit === 'km'}
-                onChange={() => handleDistanceUnitChange('km')}
-                disabled={isSavingUnit}
-                className="w-4 h-4 text-primary-600 focus:ring-primary-500"
-              />
-              <span className="text-sm text-gray-700">Kilometers (km)</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="distanceUnit"
-                value="miles"
-                checked={distanceUnit === 'miles'}
-                onChange={() => handleDistanceUnitChange('miles')}
-                disabled={isSavingUnit}
-                className="w-4 h-4 text-primary-600 focus:ring-primary-500"
-              />
-              <span className="text-sm text-gray-700">Miles</span>
-            </label>
+      {/* Collapsible: Settings */}
+      <details className="group border-t border-gray-200">
+        <summary className="flex items-center gap-3 px-4 sm:px-6 py-3 cursor-pointer list-none hover:bg-gray-50 transition-colors [&::-webkit-details-marker]:hidden">
+          <Settings className="w-5 h-5 text-primary-600 flex-shrink-0" />
+          <span className="text-lg font-semibold text-gray-900">Settings</span>
+          <span className="text-sm text-gray-500 ml-auto">Distance: {distanceUnit === 'km' ? 'Km' : 'Miles'}</span>
+        </summary>
+        <div className="px-4 sm:px-6 pb-4 pt-1 bg-gray-50/50">
+          <p className="text-sm text-gray-600 mb-3">Display distances in</p>
+          <div className="flex rounded-lg overflow-hidden border border-gray-200 p-0.5 bg-gray-100 w-fit">
+            <button
+              type="button"
+              onClick={() => handleDistanceUnitChange('km')}
+              disabled={isSavingUnit}
+              className={`px-4 py-2 text-sm font-medium transition-colors min-h-[44px] sm:min-h-0 ${
+                distanceUnit === 'km'
+                  ? 'bg-white text-primary-700 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Km
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDistanceUnitChange('miles')}
+              disabled={isSavingUnit}
+              className={`px-4 py-2 text-sm font-medium transition-colors min-h-[44px] sm:min-h-0 ${
+                distanceUnit === 'miles'
+                  ? 'bg-white text-primary-700 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Miles
+            </button>
           </div>
-          {isSavingUnit && (
-            <p className="text-xs text-gray-500 mt-2">Saving...</p>
-          )}
+          {isSavingUnit && <p className="text-xs text-gray-500 mt-2">Saving...</p>}
         </div>
-      </div>
+      </details>
 
-      {/* Wallet & Activity Section */}
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="flex items-center gap-2">
-            <Wallet className="w-6 h-6 text-primary-600" />
-            <Activity className="w-6 h-6 text-primary-600" />
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900">Wallet & Activity</h2>
+      {/* Collapsible: Wallet & Activity */}
+      <details className="group border-t border-gray-200">
+        <summary className="flex items-center gap-3 px-4 sm:px-6 py-3 cursor-pointer list-none hover:bg-gray-50 transition-colors [&::-webkit-details-marker]:hidden">
+          <Wallet className="w-5 h-5 text-primary-600 flex-shrink-0" />
+          <Activity className="w-5 h-5 text-primary-600 flex-shrink-0" />
+          <span className="text-lg font-semibold text-gray-900">Wallet & Activity</span>
+        </summary>
+        <div className="px-4 sm:px-6 pb-4 pt-1 bg-gray-50/50 space-y-2">
+          <p className="text-sm text-gray-600">View payment methods, transaction history, and ride activity.</p>
+          <p className="text-sm text-gray-500">Coming soon.</p>
         </div>
-        <p className="text-gray-600">
-          View your payment methods, transaction history, and ride activity.
-        </p>
-        <p className="text-sm text-gray-500 mt-2">
-          Wallet and activity features coming soon...
-        </p>
-      </div>
+      </details>
 
-      {/* About Section */}
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <Info className="w-6 h-6 text-primary-600" />
-          <h2 className="text-2xl font-bold text-gray-900">About</h2>
-        </div>
-        <div className="space-y-3 text-gray-600">
+      {/* Collapsible: About */}
+      <details className="group border-t border-gray-200">
+        <summary className="flex items-center gap-3 px-4 sm:px-6 py-3 cursor-pointer list-none hover:bg-gray-50 transition-colors [&::-webkit-details-marker]:hidden">
+          <Info className="w-5 h-5 text-primary-600 flex-shrink-0" />
+          <span className="text-lg font-semibold text-gray-900">About</span>
+        </summary>
+        <div className="px-4 sm:px-6 pb-4 pt-1 bg-gray-50/50 space-y-2 text-gray-600 text-sm">
           <p>
-            RideShare.Click is a community-owned ride sharing platform that connects neighbors 
+            RideShare.Click is a community-owned ride sharing platform that connects neighbors
             and helps reduce carbon emissions through shared transportation.
           </p>
-          <p className="text-sm">
-            Version 1.0.0
-          </p>
+          <p>Version 1.0.0</p>
         </div>
-      </div>
+      </details>
 
-      {/* Legal Section */}
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <FileText className="w-6 h-6 text-primary-600" />
-          <h2 className="text-2xl font-bold text-gray-900">Legal</h2>
-        </div>
-        <div className="space-y-3">
-          <div className="flex items-center gap-3">
+      {/* Collapsible: Legal */}
+      <details className="group border-t border-gray-200">
+        <summary className="flex items-center gap-3 px-4 sm:px-6 py-3 cursor-pointer list-none hover:bg-gray-50 transition-colors [&::-webkit-details-marker]:hidden">
+          <FileText className="w-5 h-5 text-primary-600 flex-shrink-0" />
+          <span className="text-lg font-semibold text-gray-900">Legal</span>
+        </summary>
+        <div className="px-4 sm:px-6 pb-4 pt-1 bg-gray-50/50 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setCurrentView('terms')}
-              className="text-primary-600 hover:text-primary-700 hover:underline text-left"
+              className="text-primary-600 hover:text-primary-700 hover:underline text-sm font-medium text-left"
             >
               Terms of Service
             </button>
             <span className="text-gray-400">|</span>
             <button
               onClick={() => setCurrentView('license')}
-              className="text-primary-600 hover:text-primary-700 hover:underline text-left"
+              className="text-primary-600 hover:text-primary-700 hover:underline text-sm font-medium text-left"
             >
               License
             </button>
           </div>
-          <p className="text-sm text-gray-500">
-            Privacy policy and other legal documents coming soon...
-          </p>
+          <p className="text-xs text-gray-500">Privacy policy and other legal documents coming soon.</p>
         </div>
+      </details>
+
+      {/* Sign Out - at bottom of page */}
+      <div className="p-4 sm:p-6 border-t border-gray-200">
+        <button
+          onClick={handleSignOut}
+          className="w-full flex items-center justify-center gap-2 bg-red-600 text-white py-3 px-6 rounded-lg hover:bg-red-700 transition-colors min-h-[44px]"
+          aria-label="Sign out of your account"
+        >
+          <LogOut className="w-5 h-5" />
+          Sign Out
+        </button>
       </div>
     </div>
   );
@@ -402,12 +368,12 @@ export function MyAccountView({
 }: MyAccountViewProps) {
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm">
+      {/* Header - sticky on scroll */}
+      <header className="sticky top-0 z-10 bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center gap-4">
           <button
             onClick={() => setCurrentView('home')}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
             aria-label="Back to home"
           >
             <ArrowLeft className="w-6 h-6" />
@@ -417,7 +383,7 @@ export function MyAccountView({
       </header>
 
       {/* Main Content */}
-      <main className="max-w-3xl mx-auto px-4 py-8">
+      <main className="max-w-3xl mx-auto px-4 py-4 sm:py-6">
         {user ? (
           <AccountContent 
             currentView={currentView}
