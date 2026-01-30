@@ -908,7 +908,15 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
           >
             <ArrowLeft className="w-6 h-6" />
           </button>
-          <h1 className="text-xl font-bold text-gray-900">Find a Ride</h1>
+          <h1 className="text-xl font-bold text-gray-900">Ride Map</h1>
+          <button
+            type="button"
+            onClick={() => setCurrentView('bookaRideRequest')}
+            className="px-4 py-2 text-sm font-medium text-primary-600 bg-primary-50 rounded-lg hover:bg-primary-100 transition-colors border border-primary-200"
+            aria-label="Go to ride list"
+          >
+            Ride List
+          </button>
           <div className="ml-auto flex items-center gap-2 text-sm text-gray-600">
             <MapPin className="w-4 h-4" />
             <span>{rideRequests.length} request{rideRequests.length !== 1 ? 's' : ''} available</span>

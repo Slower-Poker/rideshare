@@ -99,7 +99,15 @@ export function BookaRideRequest({ setCurrentView }: SharedProps) {
           >
             <ArrowLeft className="w-6 h-6" />
           </button>
-          <h1 className="text-xl font-bold text-gray-900">Ride Requests</h1>
+          <h1 className="text-xl font-bold text-gray-900">Ride List</h1>
+          <button
+            type="button"
+            onClick={() => setCurrentView('findARideMap')}
+            className="px-4 py-2 text-sm font-medium text-primary-600 bg-primary-50 rounded-lg hover:bg-primary-100 transition-colors border border-primary-200"
+            aria-label="Go to ride map"
+          >
+            Ride Map
+          </button>
           <button
             onClick={loadRideRequests}
             className="ml-auto px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"

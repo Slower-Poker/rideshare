@@ -227,8 +227,6 @@ Contributions are welcome. Please follow TypeScript strict mode, Tailwind-only s
 ## Support
 
 - Open an issue on GitHub
-- Contact: hello@rideshare.click
-
 ---
 
 ## Roadmap & Todo Checklist
