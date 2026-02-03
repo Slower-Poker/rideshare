@@ -203,21 +203,15 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
       // Cleanup map and markers
       if (mapRef.current) {
         try {
-          // Remove circle layers and sources
+          // Remove circle layers and sources (border layers must be removed before sources)
           const map = mapRef.current;
           try {
-            if (map.getLayer('pickup-circle')) {
-              map.removeLayer('pickup-circle');
-            }
-            if (map.getSource('pickup-circle')) {
-              map.removeSource('pickup-circle');
-            }
-            if (map.getLayer('dropoff-circle')) {
-              map.removeLayer('dropoff-circle');
-            }
-            if (map.getSource('dropoff-circle')) {
-              map.removeSource('dropoff-circle');
-            }
+            if (map.getLayer('pickup-circle-border')) map.removeLayer('pickup-circle-border');
+            if (map.getLayer('pickup-circle')) map.removeLayer('pickup-circle');
+            if (map.getSource('pickup-circle')) map.removeSource('pickup-circle');
+            if (map.getLayer('dropoff-circle-border')) map.removeLayer('dropoff-circle-border');
+            if (map.getLayer('dropoff-circle')) map.removeLayer('dropoff-circle');
+            if (map.getSource('dropoff-circle')) map.removeSource('dropoff-circle');
           } catch (e) {
             // Ignore errors
           }
@@ -924,7 +918,10 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
       const circleGeoJSON = createCircleGeoJSON(originLocation, radiusKm);
       
       try {
-        // Remove existing layer and source if they exist
+        // Remove existing layers and source (border uses source, so remove border first)
+        if (map.getLayer('pickup-circle-border')) {
+          map.removeLayer('pickup-circle-border');
+        }
         if (map.getLayer('pickup-circle')) {
           map.removeLayer('pickup-circle');
         }
@@ -991,7 +988,10 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
       const circleGeoJSON = createCircleGeoJSON(destinationLocation, radiusKm);
       
       try {
-        // Remove existing layer and source if they exist
+        // Remove existing layers and source (border uses source, so remove border first)
+        if (map.getLayer('dropoff-circle-border')) {
+          map.removeLayer('dropoff-circle-border');
+        }
         if (map.getLayer('dropoff-circle')) {
           map.removeLayer('dropoff-circle');
         }
