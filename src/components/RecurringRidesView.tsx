@@ -187,16 +187,19 @@ export function RecurringRidesView({ setCurrentView, user }: SharedProps) {
   return (
     <main id="main-content" className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-sm">
-        <div className="max-w-3xl mx-auto px-4 py-4 flex items-center gap-4">
+        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
           <button
             type="button"
-            onClick={() => setCurrentView('home')}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            aria-label="Back to home"
+            onClick={() => setCurrentView('account')}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+            aria-label="Back to account"
           >
-            <ArrowLeft className="w-6 h-6" />
+            <ArrowLeft className="w-5 h-5" />
           </button>
-          <h1 className="text-xl font-bold text-gray-900">Recurring rides</h1>
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">Recurring Rides</h1>
+            <p className="text-sm text-gray-600">Create templates for regular trips</p>
+          </div>
         </div>
       </header>
       <div className="max-w-3xl mx-auto px-4 py-6">

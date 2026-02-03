@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Send, Loader2, AlertCircle, MessageSquare } from 'lucide-react';
+import { Send, Loader2, AlertCircle, MessageSquare } from 'lucide-react';
 import { client } from '../client';
 import type { SharedProps } from '../types';
 import { toast } from '../utils/toast';
@@ -183,18 +183,12 @@ export function RidePlannerChat({ setCurrentView, user }: SharedProps) {
     <main id="main-content" className="h-screen flex flex-col bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm z-10">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center gap-4">
-          <button
-            onClick={() => setCurrentView('home')}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            aria-label="Back to home"
-          >
-            <ArrowLeft className="w-6 h-6" />
-          </button>
+        <div className="max-w-7xl mx-auto px-4 py-3">
           <div className="flex items-center gap-2">
-            <MessageSquare className="w-6 h-6 text-primary-600" />
+            <MessageSquare className="w-6 h-6 text-primary-600" aria-hidden />
             <h1 className="text-xl font-bold text-gray-900">AI Ride Planner</h1>
           </div>
+          <p className="text-sm text-gray-600">Ask questions about booking, offering, or finding rides</p>
         </div>
       </header>
 

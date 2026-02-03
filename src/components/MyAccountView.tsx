@@ -1,6 +1,6 @@
 import { Authenticator, useAuthenticator } from '@aws-amplify/ui-react';
 import { signOut, fetchUserAttributes, updateUserAttribute, confirmUserAttribute } from 'aws-amplify/auth';
-import { ArrowLeft, LogOut, User, Settings, Wallet, Activity, Info, FileText, CheckCircle2, Users, UserPlus, Edit2, X, Check } from 'lucide-react';
+import { LogOut, User, Settings, Wallet, Activity, Info, FileText, CheckCircle2, Users, UserPlus, Edit2, X, Check, MessageCircle, Calendar } from 'lucide-react';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { client } from '../client';
 import type { Schema } from '../../amplify/data/resource';
@@ -686,6 +686,26 @@ function AccountContent({
             <span className="font-medium text-gray-900">Connections</span>
             <span className="text-sm text-gray-500 ml-auto hidden sm:inline">Know-person ratings</span>
           </button>
+          <button
+            type="button"
+            onClick={() => setCurrentView('recurringRides')}
+            className="w-full flex items-center gap-3 p-3 min-h-[44px] bg-gray-50 hover:bg-gray-100 rounded-lg text-left transition-colors"
+            aria-label="Recurring rides and templates"
+          >
+            <Calendar className="w-5 h-5 text-primary-600 flex-shrink-0" />
+            <span className="font-medium text-gray-900">Recurring Rides</span>
+            <span className="text-sm text-gray-500 ml-auto hidden sm:inline">Templates & schedules</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setCurrentView('ridePlannerChat')}
+            className="w-full flex items-center gap-3 p-3 min-h-[44px] bg-gray-50 hover:bg-gray-100 rounded-lg text-left transition-colors"
+            aria-label="Chat with AI ride planner"
+          >
+            <MessageCircle className="w-5 h-5 text-primary-600 flex-shrink-0" />
+            <span className="font-medium text-gray-900">Ride Planner (AI)</span>
+            <span className="text-sm text-gray-500 ml-auto hidden sm:inline">Plan trips with AI</span>
+          </button>
         </div>
       </div>
 
@@ -844,16 +864,9 @@ export function MyAccountView({
 }: MyAccountViewProps) {
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header - sticky on scroll */}
-      <header className="sticky top-0 z-10 bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center gap-4">
-          <button
-            onClick={() => setCurrentView('home')}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
-            aria-label="Back to home"
-          >
-            <ArrowLeft className="w-6 h-6" />
-          </button>
+      {/* Page title - main nav is in AppShell */}
+      <header className="bg-white border-b border-gray-200 shrink-0">
+        <div className="max-w-7xl mx-auto px-4 py-3">
           <h1 className="text-xl font-bold text-gray-900">My Account</h1>
         </div>
       </header>

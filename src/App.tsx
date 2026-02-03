@@ -7,11 +7,11 @@ import type { ViewType, AuthUser } from './types';
 import { useTermsGate } from './hooks/useTermsGate';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoadingFallback } from './components/LoadingFallback';
+import { AppShell } from './components/AppShell';
 import { HomePage } from './components/HomePage';
 import 'react-toastify/dist/ReactToastify.css';
 import './index.css';
 
-const RideMapView = lazy(() => import('./components/RideMapView').then(m => ({ default: m.RideMapView })));
 const MyAccountView = lazy(() => import('./components/MyAccountView').then(m => ({ default: m.MyAccountView })));
 const TermsPage = lazy(() => import('./components/TermsPage').then(m => ({ default: m.TermsPage })));
 const LicensePage = lazy(() => import('./components/LicensePage').then(m => ({ default: m.LicensePage })));
@@ -43,7 +43,7 @@ function App() {
     }
     const stored = sessionStorage.getItem(VIEW_STORAGE_KEY);
     // Don't restore 'terms' or 'license' view - always start at home to avoid auto-redirect loop
-    if (stored && ['home', 'map', 'findARideMap', 'account', 'activeRide', 'bookRide', 'bookRideDetails', 'bookRideConfirm', 'bookaRideRequest', 'offerRide', 'ridePlannerChat', 'pools', 'connections', 'recurringRides'].includes(stored)) {
+    if (stored && ['home', 'findARideMap', 'account', 'bookRide', 'bookRideDetails', 'bookRideConfirm', 'bookaRideRequest', 'offerRide', 'ridePlannerChat', 'pools', 'connections', 'recurringRides'].includes(stored)) {
       wasRestored.current = true; // We restored from storage = page refresh
       return stored as ViewType;
     }
@@ -160,8 +160,6 @@ function App() {
     switch (currentView) {
       case 'home':
         return <HomePage {...sharedProps} />;
-      case 'map':
-        return <RideMapView {...sharedProps} />;
       case 'findARideMap':
         return <FindARideMap {...sharedProps} />;
       case 'bookRide':
@@ -201,15 +199,15 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-gray-50">
-        <a href="#main-content" className="skip-link">
-          Skip to main content
-        </a>
+      <a href="#main-content" className="skip-link">
+        Skip to main content
+      </a>
+      <AppShell currentView={currentView} setCurrentView={setCurrentView} user={user}>
         <Suspense fallback={<LoadingFallback />}>
           {renderView()}
         </Suspense>
-        <ToastContainer />
-      </div>
+      </AppShell>
+      <ToastContainer />
     </ErrorBoundary>
   );
 }

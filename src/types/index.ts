@@ -18,7 +18,7 @@ export type RideAlert = Schema['RideAlert']['type'];
 export type RideMatch = Schema['RideMatch']['type'];
 
 // View types for routing
-export type ViewType = 'home' | 'map' | 'findARideMap' | 'activeRide' | 'account' | 'terms' | 'license' | 'bookRide' | 'bookRideDetails' | 'bookRideConfirm' | 'bookaRideRequest' | 'offerRide' | 'ridePlannerChat' | 'pools' | 'connections' | 'recurringRides';
+export type ViewType = 'home' | 'findARideMap' | 'account' | 'terms' | 'license' | 'bookRide' | 'bookRideDetails' | 'bookRideConfirm' | 'bookaRideRequest' | 'offerRide' | 'ridePlannerChat' | 'pools' | 'connections' | 'recurringRides';
 
 // User types
 export type UserType = 'host' | 'rider' | 'both';

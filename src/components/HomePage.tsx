@@ -3,193 +3,114 @@ import type { SharedProps } from '../types';
 
 export function HomePage({ setCurrentView, user }: SharedProps) {
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Car className="w-8 h-8 text-primary-600" />
-            <h1 className="text-2xl font-bold text-gray-900">RideShare.Click</h1>
-          </div>
-          
-          <nav className="flex items-center gap-4">
-            <button
-              onClick={() => setCurrentView('account')}
-              className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:text-primary-600 transition-colors"
-              aria-label="View my account settings"
-            >
-              <User className="w-5 h-5" />
-              <span className="hidden sm:inline">Account</span>
-            </button>
-          </nav>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main id="main-content" className="max-w-7xl mx-auto px-4 py-8">
-        {/* Hero Section */}
-        <div className="text-center mb-12">
-          <h2 className="text-4xl font-bold text-gray-900 mb-4">
+    <>
+      <main id="main-content" className="max-w-7xl mx-auto px-4 py-6 sm:py-8 flex-1">
+        {/* Hero */}
+        <div className="text-center mb-8 sm:mb-10">
+          <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-3">
             Community Ride Sharing
           </h2>
-          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+          <p className="text-lg sm:text-xl text-gray-600 max-w-2xl mx-auto">
             Connect with your community. Share rides. Save money. Reduce carbon emissions.
           </p>
         </div>
 
-        {/* Auth Status */}
+        {/* Sign-in prompt for guests */}
         {!user && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-8 text-center">
-            <p className="text-blue-900 mb-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 sm:p-6 mb-6 text-center">
+            <p className="text-blue-900 mb-3">
               Sign in to create ride offers and join rides
             </p>
             <button
               onClick={() => setCurrentView('account')}
-              className="bg-primary-600 text-white px-6 py-3 rounded-lg hover:bg-primary-700 transition-colors"
+              className="bg-primary-600 text-white px-5 py-2.5 rounded-lg hover:bg-primary-700 transition-colors min-h-[44px] min-w-[44px]"
+              aria-label="Sign in to your account"
             >
               Sign In
             </button>
           </div>
         )}
 
-        {/* Quick Actions */}
-        <div className="grid md:grid-cols-2 gap-6 mb-12">
-          <div className="bg-white rounded-lg shadow-md p-8 hover:shadow-lg transition-shadow">
-            <h3 className="text-2xl font-bold text-gray-900 mb-4">
-              Book a Ride
+        {/* Primary actions - 3 clear options */}
+        <div className="grid sm:grid-cols-3 gap-4 sm:gap-6 mb-10">
+          <section className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
+            <h3 className="text-xl font-bold text-gray-900 mb-3 flex items-center gap-2">
+              <Map className="w-6 h-6 text-primary-600 shrink-0" aria-hidden />
+              Find Rides
             </h3>
-            <p id="book-ride-description" className="text-gray-600 mb-6">
-              Select your pickup and dropoff locations on the map. Search for addresses or click directly on the map to choose your route.
-            </p>
-            <button
-              onClick={() => setCurrentView('bookRide')}
-              className="w-full bg-primary-600 text-white py-3 px-6 rounded-lg hover:bg-primary-700 transition-colors"
-              aria-label="Book a ride by selecting pickup and dropoff locations"
-              aria-describedby="book-ride-description"
-            >
-              Book a Ride
-            </button>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-md p-8 hover:shadow-lg transition-shadow">
-            <h3 className="text-2xl font-bold text-gray-900 mb-4">
-              Offer a Ride
-            </h3>
-            <p id="offer-ride-description" className="text-gray-600 mb-6">
-              Share your empty seats with others heading the same way. Earn karma and help your community.
-            </p>
-            <button
-              onClick={() => {
-                if (user) {
-                  setCurrentView('offerRide');
-                } else {
-                  setCurrentView('account');
-                }
-              }}
-              className="w-full bg-primary-600 text-white py-3 px-6 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={!user}
-              aria-label={user ? 'Create a new ride offer' : 'Sign in to create a ride offer'}
-              aria-describedby="offer-ride-description"
-            >
-              {user ? 'Create Ride Offer' : 'Sign In to Offer'}
-            </button>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-md p-8 hover:shadow-lg transition-shadow">
-            <h3 className="text-2xl font-bold text-gray-900 mb-4">
-              Ride requests
-            </h3>
-            <p id="find-ride-description" className="text-gray-600 mb-6">
-              See who&apos;s looking for a ride. Offer a seat as a driver or post your own request as a rider.
+            <p id="find-rides-description" className="text-gray-600 mb-4 text-sm">
+              See who&apos;s looking for a ride or browse offers. Post a request or offer a seat.
             </p>
             <button
               onClick={() => setCurrentView('findARideMap')}
-              className="w-full bg-primary-600 text-white py-3 px-6 rounded-lg hover:bg-primary-700 transition-colors"
-              aria-label="View ride requests on the map"
-              aria-describedby="find-ride-description"
+              className="w-full bg-primary-600 text-white py-3 px-4 rounded-lg hover:bg-primary-700 transition-colors min-h-[44px] font-medium"
+              aria-label="View ride requests and offers on the map"
+              aria-describedby="find-rides-description"
             >
-              View ride requests
+              View map
             </button>
-          </div>
+          </section>
 
-          <div className="bg-white rounded-lg shadow-md p-8 hover:shadow-lg transition-shadow">
-            <h3 className="text-2xl font-bold text-gray-900 mb-4">
-              Chat with AI Assistant
+          <section className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
+            <h3 className="text-xl font-bold text-gray-900 mb-3 flex items-center gap-2">
+              <Car className="w-6 h-6 text-primary-600 shrink-0" aria-hidden />
+              Book a Ride
             </h3>
-            <p id="ai-chat-description" className="text-gray-600 mb-6">
-              Get help planning your ride with our AI assistant. Ask questions about booking, 
-              offering, or finding rides, and get personalized guidance.
+            <p id="book-ride-description" className="text-gray-600 mb-4 text-sm">
+              Pick your pickup and dropoff on the map. Search for addresses or tap the map.
+            </p>
+            <button
+              onClick={() => setCurrentView('bookRide')}
+              className="w-full bg-primary-600 text-white py-3 px-4 rounded-lg hover:bg-primary-700 transition-colors min-h-[44px] font-medium"
+              aria-label="Book a ride by selecting pickup and dropoff"
+              aria-describedby="book-ride-description"
+            >
+              Book a ride
+            </button>
+          </section>
+
+          <section className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
+            <h3 className="text-xl font-bold text-gray-900 mb-3 flex items-center gap-2">
+              <User className="w-6 h-6 text-primary-600 shrink-0" aria-hidden />
+              Offer a Ride
+            </h3>
+            <p id="offer-ride-description" className="text-gray-600 mb-4 text-sm">
+              Share your empty seats. Set route, time, and price. Help your community.
             </p>
             <button
               onClick={() => {
-                if (user) {
-                  setCurrentView('ridePlannerChat');
-                } else {
-                  setCurrentView('account');
-                }
+                if (user) setCurrentView('offerRide');
+                else setCurrentView('account');
               }}
-              className="w-full bg-primary-600 text-white py-3 px-6 rounded-lg hover:bg-primary-700 transition-colors"
-              aria-label="Open AI ride planner chat"
-              aria-describedby="ai-chat-description"
+              className="w-full bg-primary-600 text-white py-3 px-4 rounded-lg hover:bg-primary-700 transition-colors min-h-[44px] font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+              disabled={!user}
+              aria-label={user ? 'Create a ride offer' : 'Sign in to create a ride offer'}
+              aria-describedby="offer-ride-description"
             >
-              {user ? 'Start Chat' : 'Sign In to Chat'}
+              {user ? 'Offer a ride' : 'Sign in to offer'}
             </button>
-          </div>
+          </section>
         </div>
 
-        {/* Features */}
-        <div className="bg-white rounded-lg shadow-md p-8">
-          <h3 className="text-2xl font-bold text-gray-900 mb-6 text-center">
-            Why RideShare.Click?
-          </h3>
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Car className="w-8 h-8 text-primary-600" />
-              </div>
-              <h4 className="font-bold text-gray-900 mb-2">Community-Owned</h4>
-              <p className="text-gray-600">
-                A cooperative platform owned by and for the community
-              </p>
-            </div>
-            
-            <div className="text-center">
-              <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Map className="w-8 h-8 text-primary-600" />
-              </div>
-              <h4 className="font-bold text-gray-900 mb-2">Easy to Use</h4>
-              <p className="text-gray-600">
-                Simple map-based interface for finding and offering rides
-              </p>
-            </div>
-            
-            <div className="text-center">
-              <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <User className="w-8 h-8 text-primary-600" />
-              </div>
-              <h4 className="font-bold text-gray-900 mb-2">Trust-Based</h4>
-              <p className="text-gray-600">
-                Rating system builds trust within the community
-              </p>
-            </div>
-          </div>
+        {/* Short value prop */}
+        <div className="bg-white rounded-lg shadow p-6 text-center">
+          <p className="text-gray-600 text-sm">
+            RideShare.Click is a cooperative platform — community-owned, easy to use, and trust-based.
+          </p>
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="bg-white border-t mt-16">
-        <div className="max-w-7xl mx-auto px-4 py-8 text-center text-gray-600">
-          <p className="mb-2">
-            RideShare.Click - Community Ride Sharing Platform
-          </p>
-          <div className="flex items-center justify-center gap-4">
+      {/* Footer - legal only */}
+      <footer className="bg-white border-t mt-auto shrink-0">
+        <div className="max-w-7xl mx-auto px-4 py-6 text-center text-gray-600 text-sm">
+          <div className="flex flex-wrap items-center justify-center gap-2">
             <button
               onClick={() => setCurrentView('terms')}
               className="text-primary-600 hover:underline"
             >
               Terms of Service
             </button>
-            <span className="text-gray-400">|</span>
+            <span className="text-gray-400" aria-hidden>|</span>
             <button
               onClick={() => setCurrentView('license')}
               className="text-primary-600 hover:underline"
@@ -199,6 +120,6 @@ export function HomePage({ setCurrentView, user }: SharedProps) {
           </div>
         </div>
       </footer>
-    </div>
+    </>
   );
 }

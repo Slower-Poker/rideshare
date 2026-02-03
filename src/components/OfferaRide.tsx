@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Search, MapPin, X, Loader2, AlertCircle, CheckCircle2, Copy } from 'lucide-react';
+import { Search, MapPin, X, Loader2, AlertCircle, CheckCircle2, Copy } from 'lucide-react';
 import { client } from '../client';
 import type { SharedProps, Location } from '../types';
 import { loadMapLibre, isMapLibreLoaded, getMapLibreInstance } from '../utils/maplibreLoader';
@@ -1280,17 +1280,13 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
     <main id="main-content" className="h-screen flex flex-col">
       {/* Header */}
       <header className="bg-white shadow-sm z-10">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center gap-4">
-          <button
-            onClick={() => setCurrentView('home')}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            aria-label="Back to home"
-          >
-            <ArrowLeft className="w-6 h-6" />
-          </button>
-          <h1 className="text-xl font-bold text-gray-900">Offer a Ride</h1>
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">Offer a Ride</h1>
+            <p className="text-sm text-gray-600">Share your empty seats with others</p>
+          </div>
           {isVerified && (
-            <div className="ml-auto flex items-center gap-2 text-sm text-green-600">
+            <div className="flex items-center gap-2 text-sm text-green-600">
               <CheckCircle2 className="w-5 h-5" />
               <span className="font-medium">Coop Member</span>
             </div>

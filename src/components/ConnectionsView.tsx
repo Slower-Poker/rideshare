@@ -112,16 +112,19 @@ export function ConnectionsView({ currentView: _currentView, setCurrentView, use
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center gap-4">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
           <button
             type="button"
             onClick={() => setCurrentView('account')}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
             aria-label="Back to account"
           >
-            <ArrowLeft className="w-6 h-6" />
+            <ArrowLeft className="w-5 h-5" />
           </button>
-          <h1 className="text-xl font-bold text-gray-900">Connections</h1>
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">Connections</h1>
+            <p className="text-sm text-gray-600">People you know and trust</p>
+          </div>
         </div>
       </header>
 
