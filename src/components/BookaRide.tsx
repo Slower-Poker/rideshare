@@ -1159,7 +1159,7 @@ export function BookaRide({ setCurrentView }: SharedProps) {
   };
 
   return (
-    <div className="h-screen flex flex-col">
+    <main id="main-content" className="h-screen flex flex-col">
       {/* Header */}
       <header className="bg-white shadow-sm z-10">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center gap-4">
@@ -1384,6 +1384,6 @@ export function BookaRide({ setCurrentView }: SharedProps) {
           />
         </div>
       </div>
-    </div>
+    </main>
   );
 }

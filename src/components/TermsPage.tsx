@@ -71,7 +71,7 @@ export function TermsPage({
       </header>
 
       {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 py-8">
+      <main id="main-content" className="max-w-4xl mx-auto px-4 py-8">
         {requireAcceptance && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-8">
             <p className="text-blue-900 font-medium">

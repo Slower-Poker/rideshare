@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Search, MapPin, X, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Search, MapPin, X, Loader2, AlertCircle, CheckCircle2, Copy } from 'lucide-react';
 import { client } from '../client';
 import type { SharedProps, Location } from '../types';
 import { loadMapLibre, isMapLibreLoaded, getMapLibreInstance } from '../utils/maplibreLoader';
@@ -38,6 +38,25 @@ interface GeocodeResult {
   place_id: number;
 }
 
+/** Extract region (e.g. city name) from full address string; used for discovery filters. */
+function extractRegionFromAddress(address: string | null | undefined): string {
+  if (!address || !address.trim()) return '';
+  const part = address.split(',')[0]?.trim();
+  return part || '';
+}
+
+/** Generate a short alphanumeric join code for shareable ride links. */
+function generateJoinCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = new Uint8Array(6);
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < 6; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  return Array.from(bytes, (b) => chars[b % chars.length]).join('');
+}
+
 export function OfferaRide({ setCurrentView, user }: SharedProps) {
   const [originLocation, setOriginLocation] = useState<Location | null>(null);
   const [destinationLocation, setDestinationLocation] = useState<Location | null>(null);
@@ -65,6 +84,7 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
   // Verification state
   const [isVerified, setIsVerified] = useState(false);
   const [checkingVerification, setCheckingVerification] = useState(true);
+  const [createdOfferWithCode, setCreatedOfferWithCode] = useState<{ joinCode: string } | null>(null);
   
   // MapLibre loading states
   const [isScriptLoading, setIsScriptLoading] = useState(false);
@@ -1140,21 +1160,27 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
       }
 
       const departureDateTimeISO = departureDateTime.toISOString();
+      const departureDateStr = departureDateTimeISO.slice(0, 10);
+      const originRegionStr = extractRegionFromAddress(originLocation.address);
+      const destinationRegionStr = extractRegionFromAddress(destinationLocation.address);
+      const joinCodeStr = generateJoinCode();
       
       // Convert radii to km for storage
       const pickupRadiusKm = pickupRadius > 0 ? convertToKm(pickupRadius, distanceUnit) : undefined;
       const dropoffRadiusKm = dropoffRadius > 0 ? convertToKm(dropoffRadius, distanceUnit) : undefined;
       
-      // @ts-expect-error TS2590 - Amplify Schema return type is too complex to represent
       const result = await client.models.RideOffer.create({
         hostId: profile.id,
         originLatitude: originLocation.latitude,
         originLongitude: originLocation.longitude,
         originAddress: originLocation.address || '',
+        originRegion: originRegionStr || undefined,
         destinationLatitude: destinationLocation.latitude,
         destinationLongitude: destinationLocation.longitude,
         destinationAddress: destinationLocation.address || '',
+        destinationRegion: destinationRegionStr || undefined,
         departureTime: departureDateTimeISO,
+        departureDate: departureDateStr,
         availableSeats: availableSeats,
         seatsBooked: 0,
         status: 'available',
@@ -1163,6 +1189,7 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
         pickupRadius: pickupRadiusKm,
         dropoffRadius: dropoffRadiusKm,
         price: price,
+        joinCode: joinCodeStr,
       }) as { data?: unknown; errors?: unknown[] };
       const { data: rideOffer, errors } = result;
 
@@ -1179,7 +1206,10 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
         return;
       }
 
-      if (rideOffer) {
+      if (rideOffer && joinCodeStr) {
+        toast.success('Ride offer created successfully!');
+        setCreatedOfferWithCode({ joinCode: joinCodeStr });
+      } else if (rideOffer) {
         toast.success('Ride offer created successfully!');
         setCurrentView('home');
       }
@@ -1202,8 +1232,52 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
     );
   }
 
+  // Share ride panel after successful create
+  if (createdOfferWithCode) {
+    const shareUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/join/${createdOfferWithCode.joinCode}`;
+    const handleCopyLink = () => {
+      navigator.clipboard.writeText(shareUrl).then(
+        () => toast.success('Link copied to clipboard'),
+        () => toast.error('Could not copy link')
+      );
+    };
+    return (
+      <main id="main-content" className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-6">
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Share this ride</h2>
+          <p className="text-gray-600 mb-4">Anyone with this link can request to join your ride.</p>
+          <div className="bg-gray-50 rounded-lg p-3 mb-2 break-all text-sm text-gray-800 font-mono">
+            {shareUrl}
+          </div>
+          <p className="text-sm text-gray-600 mb-2">Join code: <strong>{createdOfferWithCode.joinCode}</strong></p>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={handleCopyLink}
+              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+              aria-label="Copy join link"
+            >
+              <Copy className="w-5 h-5" />
+              Copy link
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCreatedOfferWithCode(null);
+                setCurrentView('home');
+              }}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   return (
-    <div className="h-screen flex flex-col">
+    <main id="main-content" className="h-screen flex flex-col">
       {/* Header */}
       <header className="bg-white shadow-sm z-10">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center gap-4">
@@ -1647,7 +1721,7 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
           />
         </div>
       </div>
-    </div>
+    </main>
   );
 }
 

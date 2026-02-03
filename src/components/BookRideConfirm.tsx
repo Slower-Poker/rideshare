@@ -184,7 +184,7 @@ export function BookRideConfirm({ setCurrentView, user }: SharedProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <main id="main-content" className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm z-10">
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center gap-4">
@@ -369,7 +369,7 @@ export function BookRideConfirm({ setCurrentView, user }: SharedProps) {
           </div>
         </div>
       </div>
-    </div>
+    </main>
   );
 }
 

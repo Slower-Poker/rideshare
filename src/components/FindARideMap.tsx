@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Loader2, MapPin } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ArrowLeft, Loader2, MapPin, Clock, DollarSign, Users } from 'lucide-react';
 import { client } from '../client';
-import type { SharedProps, Location, RideRequest } from '../types';
+import type { SharedProps, Location, RideRequest, RideOffer } from '../types';
 import { loadMapLibre, isMapLibreLoaded, getMapLibreInstance } from '../utils/maplibreLoader';
 import {
   DEFAULT_CENTER,
@@ -83,11 +84,28 @@ function randomPointInCircle(centerLat: number, centerLng: number, radiusKm: num
   };
 }
 
+type ListTab = 'requests' | 'offers';
+
+function formatOfferDeparture(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  } catch {
+    return iso;
+  }
+}
+
 export function FindARideMap({ setCurrentView, user }: SharedProps) {
+  const [tab, setTab] = useState<ListTab>('requests');
   const [rideRequests, setRideRequests] = useState<RideRequest[]>([]);
+  const [rideOffers, setRideOffers] = useState<RideOffer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingOffers, setLoadingOffers] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [userProfileId, setUserProfileId] = useState<string | null>(null);
+  const [showNotifyForm, setShowNotifyForm] = useState(false);
+  const [notifyOrigin, setNotifyOrigin] = useState('');
+  const [notifyDest, setNotifyDest] = useState('');
+  const [savingAlert, setSavingAlert] = useState(false);
   
   // MapLibre loading states
   const [isScriptLoading, setIsScriptLoading] = useState(false);
@@ -522,6 +540,43 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
     loadRideRequests();
   }, []);
 
+  // Load ride offers when tab is offers
+  useEffect(() => {
+    if (tab !== 'offers') return;
+    let cancelled = false;
+    async function loadOffers() {
+      setLoadingOffers(true);
+      try {
+        // @ts-expect-error TS2590 - Amplify list return type is too complex
+        const raw: { data?: RideOffer[]; errors?: unknown[] } = await client.models.RideOffer.list({
+          filter: { status: { eq: 'available' } },
+          limit: 50,
+        });
+        const data = raw.data;
+        const errors = raw.errors;
+        if (cancelled) return;
+        if (errors?.length) {
+          if (import.meta.env.DEV) console.error('Error loading ride offers:', errors);
+          setRideOffers([]);
+        } else {
+          const sorted = (data || []).sort((a, b) => {
+            const tA = new Date(a.departureTime ?? 0).getTime();
+            const tB = new Date(b.departureTime ?? 0).getTime();
+            return tA - tB;
+          });
+          setRideOffers(sorted as RideOffer[]);
+        }
+      } catch (err) {
+        if (import.meta.env.DEV) console.error('Error loading ride offers:', err);
+        if (!cancelled) setRideOffers([]);
+      } finally {
+        if (!cancelled) setLoadingOffers(false);
+      }
+    }
+    loadOffers();
+    return () => { cancelled = true; };
+  }, [tab]);
+
   // Validate container dimensions
   const validateContainerDimensions = (): boolean => {
     if (!containerRef.current) {
@@ -897,7 +952,7 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
   }, [rideRequests, isMapLoaded]);
 
   return (
-    <div className="h-screen flex flex-col">
+    <main id="main-content" className="h-screen flex flex-col">
       {/* Header */}
       <header className="bg-white shadow-sm z-10">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center gap-4">
@@ -908,23 +963,218 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
           >
             <ArrowLeft className="w-6 h-6" />
           </button>
-          <h1 className="text-xl font-bold text-gray-900">Ride Map</h1>
-          <button
-            type="button"
-            onClick={() => setCurrentView('bookaRideRequest')}
-            className="px-4 py-2 text-sm font-medium text-primary-600 bg-primary-50 rounded-lg hover:bg-primary-100 transition-colors border border-primary-200"
-            aria-label="Go to ride list"
-          >
-            Ride List
-          </button>
+          <h1 className="text-xl font-bold text-gray-900">
+            {tab === 'requests' ? 'Ride requests' : 'Ride offers'}
+          </h1>
+          <div className="flex rounded-lg border border-gray-200 p-0.5 bg-gray-100">
+            <button
+              type="button"
+              onClick={() => setTab('requests')}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${tab === 'requests' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
+              aria-pressed={tab === 'requests'}
+            >
+              Requests
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab('offers')}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${tab === 'offers' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
+              aria-pressed={tab === 'offers'}
+            >
+              Offers
+            </button>
+          </div>
+          {tab === 'requests' && (
+            <button
+              type="button"
+              onClick={() => setCurrentView('bookaRideRequest')}
+              className="px-4 py-2 text-sm font-medium text-primary-600 bg-primary-50 rounded-lg hover:bg-primary-100 transition-colors border border-primary-200"
+              aria-label="Go to ride list"
+            >
+              Ride List
+            </button>
+          )}
           <div className="ml-auto flex items-center gap-2 text-sm text-gray-600">
-            <MapPin className="w-4 h-4" />
-            <span>{rideRequests.length} request{rideRequests.length !== 1 ? 's' : ''} available</span>
+            {tab === 'requests' ? (
+              <>
+                <MapPin className="w-4 h-4" />
+                <span>{rideRequests.length} request{rideRequests.length !== 1 ? 's' : ''} available</span>
+              </>
+            ) : (
+              <>
+                <Users className="w-4 h-4" />
+                <span>{rideOffers.length} offer{rideOffers.length !== 1 ? 's' : ''} available</span>
+              </>
+            )}
           </div>
         </div>
+        <p className="text-sm text-gray-600 px-4 pb-2 -mt-1">
+          {tab === 'requests'
+            ? "See who's looking for a ride; offer a seat or post your own request."
+            : "Browse available rides. Request to join or share a link with others."}
+        </p>
       </header>
 
-      {/* Map Container */}
+      {/* Ride offers list (when tab is offers) */}
+      {tab === 'offers' && (
+        <div className="flex-1 overflow-y-auto bg-gray-50 p-4">
+          {user && (
+            <div className="max-w-3xl mx-auto mb-4">
+              {!showNotifyForm ? (
+                <button
+                  type="button"
+                  onClick={() => setShowNotifyForm(true)}
+                  className="text-sm text-primary-600 hover:underline"
+                >
+                  Notify me when a ride matches my route
+                </button>
+              ) : (
+                <div className="bg-white rounded-lg border border-gray-200 p-4">
+                  <h3 className="font-medium text-gray-900 mb-2">Notify me when a ride matches</h3>
+                  <div className="flex flex-col sm:flex-row gap-2 mb-2">
+                    <input
+                      type="text"
+                      placeholder="From (e.g. Winnipeg)"
+                      value={notifyOrigin}
+                      onChange={(e) => setNotifyOrigin(e.target.value)}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                    <input
+                      type="text"
+                      placeholder="To (e.g. Brandon)"
+                      value={notifyDest}
+                      onChange={(e) => setNotifyDest(e.target.value)}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!user) return;
+                        setSavingAlert(true);
+                        try {
+                          const profileRes = (await client.models.UserProfile.list({
+                            filter: { userId: { eq: user.userId } },
+                            limit: 1,
+                          })) as { data?: { id: string }[] };
+                          const profile = profileRes.data?.[0];
+                          if (!profile?.id) {
+                            toast.error('Profile not found.');
+                            setSavingAlert(false);
+                            return;
+                          }
+                          const model = client.models.RideAlert;
+                          if (!model) {
+                            toast.error('Alerts not available yet.');
+                            setSavingAlert(false);
+                            return;
+                          }
+                          const alertPayload = {
+                            userProfileId: profile.id,
+                            originRegion: notifyOrigin || undefined,
+                            destinationRegion: notifyDest || undefined,
+                            notify: true,
+                            createdAt: new Date().toISOString(),
+                          };
+                          // @ts-expect-error TS2590 - Amplify create return type is too complex
+                          await model.create(alertPayload);
+                          toast.success('You’ll be notified when a matching ride is posted.');
+                          setShowNotifyForm(false);
+                          setNotifyOrigin('');
+                          setNotifyDest('');
+                        } catch (e) {
+                          if (import.meta.env.DEV) console.error('Create alert:', e);
+                          toast.error('Failed to save alert.');
+                        } finally {
+                          setSavingAlert(false);
+                        }
+                      }}
+                      disabled={savingAlert}
+                      className="px-3 py-1.5 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 disabled:opacity-50"
+                    >
+                      {savingAlert ? 'Saving...' : 'Save'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setShowNotifyForm(false); setNotifyOrigin(''); setNotifyDest(''); }}
+                      className="px-3 py-1.5 border border-gray-300 text-sm rounded-lg hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {loadingOffers ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 text-primary-600 animate-spin" />
+            </div>
+          ) : rideOffers.length === 0 ? (
+            <div className="max-w-md mx-auto text-center py-12 bg-white rounded-lg shadow p-6">
+              <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <h2 className="text-xl font-semibold text-gray-700 mb-2">No ride offers yet</h2>
+              <p className="text-gray-600 mb-6">Be the first to offer a ride and share the link with others.</p>
+              <button
+                onClick={() => user ? setCurrentView('offerRide') : setCurrentView('account')}
+                className="px-6 py-3 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
+              >
+                {user ? 'Offer a ride' : 'Sign in to offer a ride'}
+              </button>
+            </div>
+          ) : (
+            <ul className="space-y-3 max-w-3xl mx-auto" role="list">
+              {rideOffers.map((offer) => {
+                const seatsLeft = (offer.availableSeats ?? 0) - (offer.seatsBooked ?? 0);
+                const hasJoinCode = Boolean(offer.joinCode?.trim());
+                return (
+                  <li key={offer.id} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                    <div className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-gray-900 truncate">
+                          {offer.originAddress || offer.originRegion || 'Origin'} → {offer.destinationAddress || offer.destinationRegion || 'Destination'}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-3 mt-1 text-sm text-gray-600">
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-4 h-4" />
+                            {formatOfferDeparture(offer.departureTime)}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <DollarSign className="w-4 h-4" />
+                            ${offer.price}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Users className="w-4 h-4" />
+                            {seatsLeft} seat{seatsLeft !== 1 ? 's' : ''} left
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex-shrink-0">
+                        {hasJoinCode ? (
+                          <Link
+                            to={`/join/${offer.joinCode}`}
+                            className="inline-flex items-center px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors"
+                          >
+                            Request to join
+                          </Link>
+                        ) : (
+                          <span className="inline-flex items-center px-4 py-2 bg-gray-200 text-gray-500 text-sm rounded-lg cursor-not-allowed">
+                            No share link
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/* Map Container (when tab is requests) */}
+      {tab === 'requests' && (
       <div className="flex-1 relative bg-white min-h-[600px] overflow-hidden" style={{ position: 'relative', isolation: 'isolate' }}>
         {/* Loading State */}
         {((!isMapLoaded || isScriptLoading) && !mapError) && (
@@ -967,16 +1217,24 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
           <div className="absolute inset-0 bg-gray-100 flex items-center justify-center z-20">
             <div className="text-center p-6 bg-white rounded-lg shadow-lg max-w-md">
               <MapPin className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-gray-700 mb-2">No Ride Requests</h3>
-              <p className="text-gray-600 mb-4">
-                There are no pending ride requests at the moment.
+              <h2 className="text-xl font-semibold text-gray-700 mb-2">No ride requests yet</h2>
+              <p className="text-gray-600 mb-6">
+                Be the first to request a ride, or offer a seat to others.
               </p>
-              <button
-                onClick={() => setCurrentView('bookRide')}
-                className="px-6 py-3 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
-              >
-                Create a Ride Request
-              </button>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <button
+                  onClick={() => setCurrentView('bookRide')}
+                  className="px-6 py-3 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
+                >
+                  Request a ride
+                </button>
+                <button
+                  onClick={() => user ? setCurrentView('offerRide') : setCurrentView('account')}
+                  className="px-6 py-3 bg-white border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+                >
+                  {user ? 'Offer a ride' : 'Sign in to offer a ride'}
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -997,6 +1255,7 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
           }}
         />
       </div>
-    </div>
+      )}
+    </main>
   );
 }

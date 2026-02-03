@@ -1,4 +1,4 @@
-import { Car, Map, Users, User } from 'lucide-react';
+import { Car, Map, Users, User, Calendar } from 'lucide-react';
 import type { SharedProps } from '../types';
 
 export function HomePage({ setCurrentView, user }: SharedProps) {
@@ -30,6 +30,14 @@ export function HomePage({ setCurrentView, user }: SharedProps) {
               <Users className="w-5 h-5" />
               <span className="hidden sm:inline">Pool</span>
             </button>
+            <button
+              onClick={() => user ? setCurrentView('recurringRides') : setCurrentView('account')}
+              className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:text-primary-600 transition-colors"
+              aria-label="Recurring rides"
+            >
+              <Calendar className="w-5 h-5" />
+              <span className="hidden sm:inline">Recurring</span>
+            </button>
             
             <button
               onClick={() => setCurrentView('account')}
@@ -44,7 +52,7 @@ export function HomePage({ setCurrentView, user }: SharedProps) {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 py-8">
+      <main id="main-content" className="max-w-7xl mx-auto px-4 py-8">
         {/* Hero Section */}
         <div className="text-center mb-12">
           <h2 className="text-4xl font-bold text-gray-900 mb-4">
@@ -115,17 +123,18 @@ export function HomePage({ setCurrentView, user }: SharedProps) {
 
           <div className="bg-white rounded-lg shadow-md p-8 hover:shadow-lg transition-shadow">
             <h3 className="text-2xl font-bold text-gray-900 mb-4">
-              Find a Ride
+              Ride requests
             </h3>
-            <p className="text-gray-600 mb-6">
-              Browse available rides on the map or list view. Request to join rides that match your route.
+            <p id="find-ride-description" className="text-gray-600 mb-6">
+              See who&apos;s looking for a ride. Offer a seat as a driver or post your own request as a rider.
             </p>
             <button
               onClick={() => setCurrentView('findARideMap')}
               className="w-full bg-primary-600 text-white py-3 px-6 rounded-lg hover:bg-primary-700 transition-colors"
-              aria-label="View available rides on the map"
+              aria-label="View ride requests on the map"
+              aria-describedby="find-ride-description"
             >
-              View Available Rides
+              View ride requests
             </button>
           </div>
 

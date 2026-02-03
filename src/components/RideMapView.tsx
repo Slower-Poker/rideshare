@@ -7,7 +7,7 @@ export function RideMapView({ setCurrentView }: SharedProps) {
   // using Amplify Data subscriptions for real-time updates.
 
   return (
-    <div className="h-screen flex flex-col">
+    <main id="main-content" className="h-screen flex flex-col">
       {/* Header */}
       <header className="bg-white shadow-sm z-10">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center gap-4">
@@ -76,6 +76,6 @@ export function RideMapView({ setCurrentView }: SharedProps) {
         )}
         */}
       </div>
-    </div>
+    </main>
   );
 }

@@ -13,9 +13,12 @@ export type HostPoolMember = Schema['HostPoolMember']['type'];
 export type RiderPoolMember = Schema['RiderPoolMember']['type'];
 export type HostPoolReview = Schema['HostPoolReview']['type'];
 export type RiderPoolReview = Schema['RiderPoolReview']['type'];
+export type RecurringRideTemplate = Schema['RecurringRideTemplate']['type'];
+export type RideAlert = Schema['RideAlert']['type'];
+export type RideMatch = Schema['RideMatch']['type'];
 
 // View types for routing
-export type ViewType = 'home' | 'map' | 'findARideMap' | 'activeRide' | 'account' | 'terms' | 'license' | 'bookRide' | 'bookRideDetails' | 'bookRideConfirm' | 'bookaRideRequest' | 'offerRide' | 'ridePlannerChat' | 'pools' | 'connections';
+export type ViewType = 'home' | 'map' | 'findARideMap' | 'activeRide' | 'account' | 'terms' | 'license' | 'bookRide' | 'bookRideDetails' | 'bookRideConfirm' | 'bookaRideRequest' | 'offerRide' | 'ridePlannerChat' | 'pools' | 'connections' | 'recurringRides';
 
 // User types
 export type UserType = 'host' | 'rider' | 'both';

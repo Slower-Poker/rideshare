@@ -125,7 +125,7 @@ export function ConnectionsView({ currentView: _currentView, setCurrentView, use
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 py-6">
+      <main id="main-content" className="max-w-3xl mx-auto px-4 py-6">
         <p className="text-gray-600 mb-6">
           Connections let you rate people you know (know-person ratings). Send a request and they can accept.
         </p>

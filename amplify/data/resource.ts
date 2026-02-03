@@ -27,6 +27,8 @@ const schema = a.schema({
       distanceUnit: a.enum(['km', 'miles']),
       // Coop member number: assigned by the system, unique 8-character code (displayed like 8943-2923)
       coopMemberNumber: a.string(),
+      homeRegion: a.string(),
+      notifyOnMatch: a.boolean().default(true),
       // Relationships
       hostedRides: a.hasMany('RideOffer', 'hostId'),
       joinedRides: a.hasMany('RideParticipant', 'riderId'),
@@ -41,6 +43,8 @@ const schema = a.schema({
       ratingsReceived: a.hasMany('RideRating', 'ratedUserId'),
       hostPoolReviews: a.hasMany('HostPoolReview', 'reviewerId'),
       riderPoolReviews: a.hasMany('RiderPoolReview', 'reviewerId'),
+      recurringRideTemplates: a.hasMany('RecurringRideTemplate', 'hostId'),
+      rideAlerts: a.hasMany('RideAlert', 'userProfileId'),
     })
     .authorization((allow) => [
       // Authenticated users can read all profiles and create their own
@@ -56,10 +60,13 @@ const schema = a.schema({
       originLatitude: a.float().required(),
       originLongitude: a.float().required(),
       originAddress: a.string(),
+      originRegion: a.string(),
       destinationLatitude: a.float().required(),
       destinationLongitude: a.float().required(),
       destinationAddress: a.string(),
+      destinationRegion: a.string(),
       departureTime: a.datetime().required(),
+      departureDate: a.string(),
       availableSeats: a.integer().required(),
       seatsBooked: a.integer().default(0),
       status: a.enum(['available', 'matched', 'active', 'completed', 'cancelled']),
@@ -68,10 +75,13 @@ const schema = a.schema({
       pickupRadius: a.float(),
       dropoffRadius: a.float(),
       price: a.float().required(),
+      joinCode: a.string(),
       // Relationships
       host: a.belongsTo('UserProfile', 'hostId'),
       participants: a.hasMany('RideParticipant', 'rideOfferId'),
       ratings: a.hasMany('RideRating', 'rideOfferId'),
+      matchedRideRequests: a.hasMany('RideRequest', 'matchedRideOfferId'),
+      matches: a.hasMany('RideMatch', 'rideOfferId'),
     })
     .authorization((allow) => [
       // Allow guests to read rides (filtering by status should be done in application code)
@@ -252,9 +262,12 @@ const schema = a.schema({
       maximumAmount: a.float().required(),
       notes: a.string(),
       status: a.enum(['pending', 'matched', 'completed', 'cancelled']),
+      matchedRideOfferId: a.id(),
       createdAt: a.datetime().required(),
       // Relationships
       requester: a.belongsTo('UserProfile', 'requesterId'),
+      rideOffer: a.belongsTo('RideOffer', 'matchedRideOfferId'),
+      matches: a.hasMany('RideMatch', 'rideRequestId'),
     })
     .authorization((allow) => [
       // Allow guests to read ride requests
@@ -262,6 +275,69 @@ const schema = a.schema({
       // Authenticated users can read all requests and create new ones
       allow.authenticated().to(['read', 'create', 'update', 'delete']),
       // Note: Application logic should enforce that only the requester can update/delete their own requests
+    ]),
+
+  // Recurring Ride Template - host offers same route on a schedule (e.g. every Monday 8am)
+  RecurringRideTemplate: a
+    .model({
+      hostId: a.id().required(),
+      originLatitude: a.float().required(),
+      originLongitude: a.float().required(),
+      originAddress: a.string(),
+      originRegion: a.string(),
+      destinationLatitude: a.float().required(),
+      destinationLongitude: a.float().required(),
+      destinationAddress: a.string(),
+      destinationRegion: a.string(),
+      dayOfWeek: a.integer().required(), // 0 = Sunday, 1 = Monday, ... 6 = Saturday
+      departureTime: a.string().required(), // "08:00" or "08:30"
+      availableSeats: a.integer().required(),
+      price: a.float().required(),
+      vehicleInfo: a.string(),
+      notes: a.string(),
+      pickupRadius: a.float(),
+      dropoffRadius: a.float(),
+      status: a.enum(['active', 'paused', 'cancelled']),
+      createdAt: a.datetime().required(),
+      // Relationships
+      host: a.belongsTo('UserProfile', 'hostId'),
+    })
+    .authorization((allow) => [
+      allow.authenticated().to(['read', 'create', 'update', 'delete']),
+    ]),
+
+  // Ride Alert - user wants to be notified when a ride matches their route
+  RideAlert: a
+    .model({
+      userProfileId: a.id().required(),
+      originRegion: a.string(),
+      destinationRegion: a.string(),
+      preferredDateFrom: a.string(),
+      preferredDateTo: a.string(),
+      notify: a.boolean().default(true),
+      createdAt: a.datetime().required(),
+      // Relationships
+      user: a.belongsTo('UserProfile', 'userProfileId'),
+    })
+    .authorization((allow) => [
+      allow.authenticated().to(['read', 'create', 'update', 'delete']),
+    ]),
+
+  // RideMatch - explicit link between a ride request and a ride offer (propose/accept)
+  RideMatch: a
+    .model({
+      rideOfferId: a.id().required(),
+      rideRequestId: a.id().required(),
+      status: a.enum(['proposed', 'accepted', 'declined']),
+      proposedByUserId: a.id().required(),
+      createdAt: a.datetime().required(),
+      updatedAt: a.datetime(),
+      // Relationships
+      rideOffer: a.belongsTo('RideOffer', 'rideOfferId'),
+      rideRequest: a.belongsTo('RideRequest', 'rideRequestId'),
+    })
+    .authorization((allow) => [
+      allow.authenticated().to(['read', 'create', 'update', 'delete']),
     ]),
 
   // AI Conversation Route for Nova Agent

@@ -180,7 +180,7 @@ export function RidePlannerChat({ setCurrentView, user }: SharedProps) {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <main id="main-content" className="h-screen flex flex-col bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm z-10">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center gap-4">
@@ -314,6 +314,6 @@ export function RidePlannerChat({ setCurrentView, user }: SharedProps) {
           </p>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

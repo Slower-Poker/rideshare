@@ -176,7 +176,7 @@ export function PoolsView({ currentView: _currentView, setCurrentView, user }: P
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 py-6">
+      <main id="main-content" className="max-w-3xl mx-auto px-4 py-6">
         <div className="flex gap-2 mb-6">
           <button
             type="button"

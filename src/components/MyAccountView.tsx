@@ -383,7 +383,7 @@ export function MyAccountView({
       </header>
 
       {/* Main Content */}
-      <main className="max-w-3xl mx-auto px-4 py-4 sm:py-6">
+      <main id="main-content" className="max-w-3xl mx-auto px-4 py-4 sm:py-6">
         {user ? (
           <AccountContent 
             currentView={currentView}
