@@ -1,6 +1,6 @@
 import { Authenticator, useAuthenticator } from '@aws-amplify/ui-react';
-import { signOut } from 'aws-amplify/auth';
-import { ArrowLeft, LogOut, User, Settings, Wallet, Activity, Info, FileText, CheckCircle2, Users, UserPlus } from 'lucide-react';
+import { signOut, fetchUserAttributes, updateUserAttribute, confirmUserAttribute } from 'aws-amplify/auth';
+import { ArrowLeft, LogOut, User, Settings, Wallet, Activity, Info, FileText, CheckCircle2, Users, UserPlus, Edit2, X, Check } from 'lucide-react';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { client } from '../client';
 import type { Schema } from '../../amplify/data/resource';
@@ -24,6 +24,65 @@ function AccountContent({
   const [userProfile, setUserProfile] = useState<Schema['UserProfile']['type'] | null>(null);
   const [distanceUnit, setDistanceUnit] = useState<'km' | 'miles'>('km');
   const [isSavingUnit, setIsSavingUnit] = useState(false);
+  
+  // Edit state for profile fields
+  const [editingField, setEditingField] = useState<'givenName' | 'familyName' | 'email' | 'phoneNumber' | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [verificationSent, setVerificationSent] = useState(false);
+
+  // Sync Cognito attributes to UserProfile
+  const syncCognitoAttributes = useCallback(async (profile: Schema['UserProfile']['type']) => {
+    try {
+      const attributes = await fetchUserAttributes();
+      const updates: Partial<Schema['UserProfile']['type']> = {};
+      let needsUpdate = false;
+
+      // Sync givenName (given_name in Cognito)
+      if (attributes.given_name && attributes.given_name !== profile.givenName) {
+        updates.givenName = attributes.given_name;
+        needsUpdate = true;
+      }
+
+      // Sync familyName (family_name in Cognito)
+      if (attributes.family_name && attributes.family_name !== profile.familyName) {
+        updates.familyName = attributes.family_name;
+        needsUpdate = true;
+      }
+
+      // Sync phoneNumber (phone_number in Cognito)
+      if (attributes.phone_number && attributes.phone_number !== profile.phoneNumber) {
+        updates.phoneNumber = attributes.phone_number;
+        needsUpdate = true;
+      }
+
+      // Update profile if any attributes need syncing
+      if (needsUpdate) {
+        const { data: updatedProfile, errors } = await client.models.UserProfile.update({
+          id: profile.id,
+          ...updates,
+        });
+
+        if (errors) {
+          if (import.meta.env.DEV) {
+            console.error('Error syncing Cognito attributes:', errors);
+          }
+          return profile;
+        }
+
+        return updatedProfile as Schema['UserProfile']['type'];
+      }
+
+      return profile;
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error('Error fetching Cognito attributes:', error);
+      }
+      return profile;
+    }
+  }, []);
 
   // Fetch user profile
   const fetchUserProfile = useCallback(async () => {
@@ -46,10 +105,12 @@ function AccountContent({
 
       if (profiles && profiles.length > 0) {
         const profile = profiles[0] as Schema['UserProfile']['type'];
-        setUserProfile(profile);
+        // Sync Cognito attributes to profile
+        const syncedProfile = await syncCognitoAttributes(profile);
+        setUserProfile(syncedProfile);
         // Set distance unit from profile with validation, default to 'km'
         const validUnits: ('km' | 'miles')[] = ['km', 'miles'];
-        const unit = profile.distanceUnit;
+        const unit = syncedProfile.distanceUnit;
         const validUnit = unit && validUnits.includes(unit as 'km' | 'miles') 
           ? (unit as 'km' | 'miles') 
           : 'km';
@@ -60,7 +121,7 @@ function AccountContent({
         console.error('Error fetching user profile:', error);
       }
     }
-  }, [user]);
+  }, [user, syncCognitoAttributes]);
 
   useEffect(() => {
     fetchUserProfile();
@@ -116,6 +177,164 @@ function AccountContent({
     }
   };
 
+  // Start editing a field
+  const startEditing = (field: 'givenName' | 'familyName' | 'email' | 'phoneNumber') => {
+    if (field === 'email') {
+      setEditValue(userProfile?.email || displayUser?.email || '');
+    } else {
+      setEditValue(userProfile?.[field] || '');
+    }
+    setEditingField(field);
+    setVerificationCode('');
+    setVerificationSent(false);
+  };
+
+  // Cancel editing
+  const cancelEditing = () => {
+    setEditingField(null);
+    setEditValue('');
+    setVerificationCode('');
+    setVerificationSent(false);
+  };
+
+  // Send verification code for email or phone
+  const sendVerificationCode = async () => {
+    if (!editingField || !editValue) return;
+
+    setIsVerifying(true);
+    try {
+      if (editingField === 'email') {
+        // Update email attribute - Cognito automatically sends verification code
+        await updateUserAttribute({
+          userAttribute: {
+            attributeKey: 'email',
+            value: editValue,
+          },
+        });
+        setVerificationSent(true);
+        toast.success('Verification code sent to your new email address');
+      } else if (editingField === 'phoneNumber') {
+        // Update phone attribute - Cognito automatically sends verification code
+        await updateUserAttribute({
+          userAttribute: {
+            attributeKey: 'phone_number',
+            value: editValue,
+          },
+        });
+        setVerificationSent(true);
+        toast.success('Verification code sent to your new phone number');
+      }
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error('Error sending verification code:', error);
+      }
+      toast.error('Failed to send verification code. Please try again.');
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  // Verify and save changes
+  const verifyAndSave = async () => {
+    if (!editingField || !userProfile) return;
+
+    // Email and phone require a verification code; name fields do not
+    const needsCode = editingField === 'email' || editingField === 'phoneNumber';
+    if (needsCode && !verificationCode.trim()) {
+      toast.error('Please enter the verification code');
+      return;
+    }
+
+    setIsUpdating(true);
+    try {
+      if (editingField === 'email') {
+        // Confirm email verification
+        await confirmUserAttribute({
+          userAttributeKey: 'email',
+          confirmationCode: verificationCode,
+        });
+        
+        // Update UserProfile
+        const { data, errors } = await client.models.UserProfile.update({
+          id: userProfile.id,
+          email: editValue,
+        });
+
+        if (errors) {
+          toast.error('Failed to update email');
+          return;
+        }
+
+        if (data) {
+          setUserProfile(data as Schema['UserProfile']['type']);
+          // Refresh user attributes to get updated email
+          await fetchUserProfile();
+          toast.success('Email updated successfully');
+          cancelEditing();
+        }
+      } else if (editingField === 'phoneNumber') {
+        // Confirm phone verification
+        await confirmUserAttribute({
+          userAttributeKey: 'phone_number',
+          confirmationCode: verificationCode,
+        });
+        
+        // Update UserProfile
+        const { data, errors } = await client.models.UserProfile.update({
+          id: userProfile.id,
+          phoneNumber: editValue,
+        });
+
+        if (errors) {
+          toast.error('Failed to update phone number');
+          return;
+        }
+
+        if (data) {
+          setUserProfile(data as Schema['UserProfile']['type']);
+          // Refresh user attributes
+          await fetchUserProfile();
+          toast.success('Phone number updated successfully');
+          cancelEditing();
+        }
+      } else if (editingField === 'givenName' || editingField === 'familyName') {
+        // Name fields don't require verification, just confirmation
+        await updateUserAttribute({
+          userAttribute: {
+            attributeKey: editingField === 'givenName' ? 'given_name' : 'family_name',
+            value: editValue,
+          },
+        });
+        
+        // Update UserProfile
+        const { data, errors } = await client.models.UserProfile.update({
+          id: userProfile.id,
+          [editingField]: editValue || null,
+        });
+
+        if (errors) {
+          toast.error(`Failed to update ${editingField === 'givenName' ? 'first name' : 'last name'}`);
+          return;
+        }
+
+        if (data) {
+          setUserProfile(data as Schema['UserProfile']['type']);
+          // Refresh user attributes
+          await fetchUserProfile();
+          toast.success(`${editingField === 'givenName' ? 'First name' : 'Last name'} updated successfully`);
+          cancelEditing();
+        }
+      }
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error('Error verifying and saving:', error);
+      }
+      toast.error('Verification failed. Please check your code and try again.');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   // Get user info from props (when user is already authenticated) or from authUser (when signing in)
   const displayUser = user;
   const isVerified = userProfile?.verifiedRideHost === true;
@@ -131,7 +350,9 @@ function AccountContent({
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-lg sm:text-xl font-semibold text-gray-900 truncate">
-                {displayUser?.username || 'User'}
+                {userProfile?.givenName || userProfile?.familyName
+                  ? [userProfile.givenName, userProfile.familyName].filter(Boolean).join(' ')
+                  : 'User'}
               </h2>
               {isVerified && (
                 <span className="flex items-center gap-1 text-green-600 text-xs sm:text-sm font-medium" title="Verified Ride Host">
@@ -140,12 +361,261 @@ function AccountContent({
                 </span>
               )}
             </div>
-            <p className="text-sm text-gray-600 truncate">{displayUser?.email || ''}</p>
           </div>
         </div>
+
+        {/* Editable Profile Fields */}
+        <div className="mt-4 space-y-3">
+          {/* First Name */}
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-gray-700 w-24 flex-shrink-0">First Name:</label>
+            {editingField === 'givenName' ? (
+              <div className="flex-1 flex items-center gap-2">
+                <input
+                  type="text"
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  placeholder="Enter first name"
+                />
+                <button
+                  onClick={verifyAndSave}
+                  disabled={isUpdating || !editValue.trim()}
+                  className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
+                  aria-label="Save first name"
+                >
+                  <Check className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={cancelEditing}
+                  disabled={isUpdating}
+                  className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+                  aria-label="Cancel editing"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex-1 flex items-center gap-2">
+                <span className="text-sm text-gray-900">{userProfile?.givenName || 'Not set'}</span>
+                <button
+                  onClick={() => startEditing('givenName')}
+                  className="p-1 text-primary-600 hover:bg-primary-50 rounded transition-colors"
+                  aria-label="Edit first name"
+                >
+                  <Edit2 className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Last Name */}
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-gray-700 w-24 flex-shrink-0">Last Name:</label>
+            {editingField === 'familyName' ? (
+              <div className="flex-1 flex items-center gap-2">
+                <input
+                  type="text"
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  placeholder="Enter last name"
+                />
+                <button
+                  onClick={verifyAndSave}
+                  disabled={isUpdating || !editValue.trim()}
+                  className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
+                  aria-label="Save last name"
+                >
+                  <Check className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={cancelEditing}
+                  disabled={isUpdating}
+                  className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+                  aria-label="Cancel editing"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex-1 flex items-center gap-2">
+                <span className="text-sm text-gray-900">{userProfile?.familyName || 'Not set'}</span>
+                <button
+                  onClick={() => startEditing('familyName')}
+                  className="p-1 text-primary-600 hover:bg-primary-50 rounded transition-colors"
+                  aria-label="Edit last name"
+                >
+                  <Edit2 className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Email */}
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-gray-700 w-24 flex-shrink-0">Email:</label>
+            {editingField === 'email' ? (
+              <div className="flex-1 space-y-3">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="email"
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    placeholder="Enter email address"
+                    disabled={verificationSent}
+                  />
+                  {!verificationSent && (
+                    <>
+                      <button
+                        onClick={sendVerificationCode}
+                        disabled={isVerifying || !editValue.trim()}
+                        className="px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
+                      >
+                        {isVerifying ? 'Sending...' : 'Send Code'}
+                      </button>
+                      <button
+                        onClick={cancelEditing}
+                        disabled={isVerifying}
+                        className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+                        aria-label="Cancel editing"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-gray-600 shrink-0">Verification code:</label>
+                  <input
+                    type="text"
+                    value={verificationCode}
+                    onChange={(e) => setVerificationCode(e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    placeholder={verificationSent ? 'Enter code from email' : 'Click Send Code first'}
+                    maxLength={6}
+                    disabled={!verificationSent}
+                  />
+                  {verificationSent && (
+                    <>
+                      <button
+                        onClick={verifyAndSave}
+                        disabled={isUpdating || !verificationCode.trim()}
+                        className="px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
+                      >
+                        {isUpdating ? 'Verifying...' : 'Verify & Save'}
+                      </button>
+                      <button
+                        onClick={cancelEditing}
+                        disabled={isUpdating}
+                        className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+                        aria-label="Cancel editing"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1 flex items-center gap-2">
+                <span className="text-sm text-gray-900">{userProfile?.email || displayUser?.email || 'Not set'}</span>
+                <button
+                  onClick={() => startEditing('email')}
+                  className="p-1 text-primary-600 hover:bg-primary-50 rounded transition-colors"
+                  aria-label="Edit email"
+                >
+                  <Edit2 className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Phone Number */}
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-gray-700 w-24 flex-shrink-0">Phone:</label>
+            {editingField === 'phoneNumber' ? (
+              <div className="flex-1 space-y-3">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="tel"
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    placeholder="Enter phone number (e.g., +1234567890)"
+                    disabled={verificationSent}
+                  />
+                  {!verificationSent && (
+                    <>
+                      <button
+                        onClick={sendVerificationCode}
+                        disabled={isVerifying || !editValue.trim()}
+                        className="px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
+                      >
+                        {isVerifying ? 'Sending...' : 'Send Code'}
+                      </button>
+                      <button
+                        onClick={cancelEditing}
+                        disabled={isVerifying}
+                        className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+                        aria-label="Cancel editing"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-gray-600 shrink-0">Verification code:</label>
+                  <input
+                    type="text"
+                    value={verificationCode}
+                    onChange={(e) => setVerificationCode(e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    placeholder={verificationSent ? 'Enter code from SMS' : 'Click Send Code first'}
+                    maxLength={6}
+                    disabled={!verificationSent}
+                  />
+                  {verificationSent && (
+                    <>
+                      <button
+                        onClick={verifyAndSave}
+                        disabled={isUpdating || !verificationCode.trim()}
+                        className="px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
+                      >
+                        {isUpdating ? 'Verifying...' : 'Verify & Save'}
+                      </button>
+                      <button
+                        onClick={cancelEditing}
+                        disabled={isUpdating}
+                        className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+                        aria-label="Cancel editing"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1 flex items-center gap-2">
+                <span className="text-sm text-gray-900">{userProfile?.phoneNumber || 'Not set'}</span>
+                <button
+                  onClick={() => startEditing('phoneNumber')}
+                  className="p-1 text-primary-600 hover:bg-primary-50 rounded transition-colors"
+                  aria-label="Edit phone number"
+                >
+                  <Edit2 className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Coop Member Number - one line with tooltip */}
         <div
-          className="mt-3 pt-3 border-t border-gray-200"
+          className="mt-4 pt-3 border-t border-gray-200"
           title="Assigned automatically by the system. Required for offering/finding rides."
         >
           <p className="text-sm text-gray-700">
@@ -189,28 +659,34 @@ function AccountContent({
         </div>
       </div>
 
-      {/* Primary actions - Pools & Connections */}
-      <div className="p-4 sm:p-6 space-y-2 border-b border-gray-200">
-        <button
-          type="button"
-          onClick={() => setCurrentView('pools')}
-          className="w-full flex items-center gap-3 p-3 min-h-[44px] bg-gray-50 hover:bg-gray-100 rounded-lg text-left transition-colors"
-          aria-label="Rider and driver pools"
-        >
-          <Users className="w-5 h-5 text-primary-600 flex-shrink-0" />
-          <span className="font-medium text-gray-900">Pools</span>
-          <span className="text-sm text-gray-500 ml-auto hidden sm:inline">Rider & Driver pools</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setCurrentView('connections')}
-          className="w-full flex items-center gap-3 p-3 min-h-[44px] bg-gray-50 hover:bg-gray-100 rounded-lg text-left transition-colors"
-          aria-label="Connections and know-person ratings"
-        >
-          <UserPlus className="w-5 h-5 text-primary-600 flex-shrink-0" />
-          <span className="font-medium text-gray-900">Connections</span>
-          <span className="text-sm text-gray-500 ml-auto hidden sm:inline">Know-person ratings</span>
-        </button>
+      {/* Social - Pools & Connections */}
+      <div className="p-4 sm:p-6 border-b border-gray-200">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+          <Users className="w-4 h-4 text-primary-600" aria-hidden />
+          Social
+        </h3>
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => setCurrentView('pools')}
+            className="w-full flex items-center gap-3 p-3 min-h-[44px] bg-gray-50 hover:bg-gray-100 rounded-lg text-left transition-colors"
+            aria-label="Rider and driver pools"
+          >
+            <Users className="w-5 h-5 text-primary-600 flex-shrink-0" />
+            <span className="font-medium text-gray-900">Pools</span>
+            <span className="text-sm text-gray-500 ml-auto hidden sm:inline">Rider & Driver pools</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setCurrentView('connections')}
+            className="w-full flex items-center gap-3 p-3 min-h-[44px] bg-gray-50 hover:bg-gray-100 rounded-lg text-left transition-colors"
+            aria-label="Connections and know-person ratings"
+          >
+            <UserPlus className="w-5 h-5 text-primary-600 flex-shrink-0" />
+            <span className="font-medium text-gray-900">Connections</span>
+            <span className="text-sm text-gray-500 ml-auto hidden sm:inline">Know-person ratings</span>
+          </button>
+        </div>
       </div>
 
       {/* Collapsible: Settings */}
