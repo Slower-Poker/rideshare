@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { ArrowLeft, MapPin, Clock, Users, DollarSign, FileText, Loader2 } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { ArrowLeft, MapPin, Clock, Users, DollarSign, FileText, Loader2, Trash2 } from 'lucide-react';
 import { client } from '../client';
 import type { Schema } from '../../amplify/data/resource';
 import type { SharedProps } from '../types';
@@ -7,16 +7,38 @@ import { toast } from '../utils/toast';
 
 type RideRequest = Schema['RideRequest']['type'];
 
-export function BookaRideRequest({ setCurrentView }: SharedProps) {
+export function BookaRideRequest({ setCurrentView, user }: SharedProps) {
   const [rideRequests, setRideRequests] = useState<RideRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [userProfileId, setUserProfileId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Fetch user's profile ID
   useEffect(() => {
-    loadRideRequests();
-  }, []);
+    if (!user) {
+      setUserProfileId(null);
+      return;
+    }
+    let cancelled = false;
+    async function fetchProfile() {
+      try {
+        const { data: profiles } = await client.models.UserProfile.list({
+          filter: { userId: { eq: user!.userId } },
+          limit: 1,
+        });
+        if (!cancelled && profiles?.[0]?.id) {
+          setUserProfileId(profiles[0].id);
+        }
+      } catch (e) {
+        if (import.meta.env.DEV) console.error('Error fetching profile:', e);
+      }
+    }
+    fetchProfile();
+    return () => { cancelled = true; };
+  }, [user]);
 
-  const loadRideRequests = async () => {
+  const loadRideRequests = useCallback(async () => {
     setLoading(true);
     setError(null);
 
@@ -53,6 +75,33 @@ export function BookaRideRequest({ setCurrentView }: SharedProps) {
       toast.error('Failed to load ride requests');
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadRideRequests();
+  }, [loadRideRequests]);
+
+  const handleDelete = async (requestId: string) => {
+    if (!confirm('Are you sure you want to delete this ride request? This cannot be undone.')) {
+      return;
+    }
+
+    setDeletingId(requestId);
+    try {
+      const { errors } = await client.models.RideRequest.delete({ id: requestId });
+      if (errors?.length) {
+        console.error('Error deleting ride request:', errors);
+        toast.error('Failed to delete ride request');
+      } else {
+        toast.success('Ride request deleted');
+        setRideRequests((prev) => prev.filter((r) => r.id !== requestId));
+      }
+    } catch (e) {
+      console.error('Error deleting ride request:', e);
+      toast.error('Failed to delete ride request');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -170,11 +219,31 @@ export function BookaRideRequest({ setCurrentView }: SharedProps) {
                         >
                           {request.status || 'pending'}
                         </span>
+                        {userProfileId && request.requesterId === userProfileId && (
+                          <span className="px-2 py-0.5 rounded text-xs font-medium bg-primary-100 text-primary-700">
+                            Your request
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-gray-500">
                         Created: {formatDate(request.createdAt)}
                       </p>
                     </div>
+                    {userProfileId && request.requesterId === userProfileId && (
+                      <button
+                        type="button"
+                        onClick={() => request.id && handleDelete(request.id)}
+                        disabled={deletingId === request.id}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center disabled:opacity-50"
+                        aria-label="Delete this ride request"
+                      >
+                        {deletingId === request.id ? (
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-5 h-5" />
+                        )}
+                      </button>
+                    )}
                   </div>
 
                   {/* Locations */}

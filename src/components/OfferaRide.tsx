@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, MapPin, X, Loader2, AlertCircle, CheckCircle2, Copy } from 'lucide-react';
+import { Search, MapPin, X, Loader2, AlertCircle, CheckCircle2, Copy, RefreshCw } from 'lucide-react';
 import { client } from '../client';
 import type { SharedProps, Location } from '../types';
 import { loadMapLibre, isMapLibreLoaded, getMapLibreInstance } from '../utils/maplibreLoader';
@@ -68,11 +68,19 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
   const [searchingDestination, setSearchingDestination] = useState(false);
   
   // Form fields
-  const [departureTime, setDepartureTime] = useState('');
+  const [departureDate, setDepartureDate] = useState('');
+  const [departureTimeOnly, setDepartureTimeOnly] = useState('');
   const [availableSeats, setAvailableSeats] = useState<number>(1);
   const [vehicleInfo, setVehicleInfo] = useState('');
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Recurring ride options
+  type RecurrenceType = 'none' | 'weekly' | 'hourly';
+  const [recurrence, setRecurrence] = useState<RecurrenceType>('none');
+  const [selectedDays, setSelectedDays] = useState<number[]>([]); // 0=Sun, 1=Mon, ..., 6=Sat
+  const [weeksToGenerate, setWeeksToGenerate] = useState<number>(4); // Number of weeks to generate
+  const [hourlyCount, setHourlyCount] = useState<number>(4); // For hourly recurrence
   
   // Radius and price fields
   const [pickupRadius, setPickupRadius] = useState<number>(RADIUS_MIN);
@@ -1078,8 +1086,13 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
       return;
     }
 
-    if (!departureTime) {
-      toast.error('Please select a departure time');
+    if (!departureDate || !departureTimeOnly) {
+      toast.error('Please select both date and time');
+      return;
+    }
+    
+    if (recurrence === 'weekly' && selectedDays.length === 0) {
+      toast.error('Please select at least one day of the week for recurring rides');
       return;
     }
 
@@ -1149,8 +1162,8 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
         return;
       }
 
-      // Validate departure time is in the future
-      const departureDateTime = new Date(departureTime);
+      // Combine date and time into a full datetime
+      const departureDateTime = new Date(`${departureDate}T${departureTimeOnly}`);
       const now = new Date();
 
       if (departureDateTime <= now) {
@@ -1159,39 +1172,108 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
         return;
       }
 
-      const departureDateTimeISO = departureDateTime.toISOString();
-      const departureDateStr = departureDateTimeISO.slice(0, 10);
       const originRegionStr = extractRegionFromAddress(originLocation.address);
       const destinationRegionStr = extractRegionFromAddress(destinationLocation.address);
-      const joinCodeStr = generateJoinCode();
       
       // Convert radii to km for storage
       const pickupRadiusKm = pickupRadius > 0 ? convertToKm(pickupRadius, distanceUnit) : undefined;
       const dropoffRadiusKm = dropoffRadius > 0 ? convertToKm(dropoffRadius, distanceUnit) : undefined;
       
-      const result = await client.models.RideOffer.create({
-        hostId: profile.id,
-        originLatitude: originLocation.latitude,
-        originLongitude: originLocation.longitude,
-        originAddress: originLocation.address || '',
-        originRegion: originRegionStr || undefined,
-        destinationLatitude: destinationLocation.latitude,
-        destinationLongitude: destinationLocation.longitude,
-        destinationAddress: destinationLocation.address || '',
-        destinationRegion: destinationRegionStr || undefined,
-        departureTime: departureDateTimeISO,
-        departureDate: departureDateStr,
-        availableSeats: availableSeats,
-        seatsBooked: 0,
-        status: 'available',
-        vehicleInfo: vehicleInfo || undefined,
-        notes: notes || undefined,
-        pickupRadius: pickupRadiusKm,
-        dropoffRadius: dropoffRadiusKm,
-        price: price,
-        joinCode: joinCodeStr,
-      }) as { data?: unknown; errors?: unknown[] };
-      const { data: rideOffer, errors } = result;
+      // Calculate how many ride offers to create based on recurrence
+      const ridesToCreate: Date[] = [];
+      
+      if (recurrence === 'none') {
+        // One-time ride
+        ridesToCreate.push(departureDateTime);
+      } else if (recurrence === 'hourly') {
+        // Hourly recurrence - create rides for each hour
+        for (let i = 0; i < hourlyCount; i++) {
+          const rideDate = new Date(departureDateTime);
+          rideDate.setHours(rideDate.getHours() + i);
+          if (rideDate > now) {
+            ridesToCreate.push(rideDate);
+          }
+        }
+      } else if (recurrence === 'weekly' && selectedDays.length > 0) {
+        // Weekly schedule - create rides for selected days over the specified weeks
+        const startDate = new Date(departureDate);
+        const [hours, minutes] = departureTimeOnly.split(':').map(Number);
+        
+        for (let week = 0; week < weeksToGenerate; week++) {
+          for (const dayOfWeek of selectedDays) {
+            const rideDate = new Date(startDate);
+            // Find the next occurrence of this day of week
+            const daysUntilTarget = (dayOfWeek - startDate.getDay() + 7) % 7;
+            rideDate.setDate(startDate.getDate() + daysUntilTarget + (week * 7));
+            rideDate.setHours(hours, minutes, 0, 0);
+            
+            // Only add if it's in the future
+            if (rideDate > now) {
+              ridesToCreate.push(rideDate);
+            }
+          }
+        }
+        
+        // Sort rides by date
+        ridesToCreate.sort((a, b) => a.getTime() - b.getTime());
+      }
+      
+      if (ridesToCreate.length === 0) {
+        toast.error('No valid ride dates found. Please select a future date.');
+        setIsSubmitting(false);
+        return;
+      }
+      
+      let lastJoinCode = '';
+      let createdCount = 0;
+      
+      for (const rideDateTime of ridesToCreate) {
+        const departureDateTimeISO = rideDateTime.toISOString();
+        const departureDateStr = departureDateTimeISO.slice(0, 10);
+        const joinCodeStr = generateJoinCode();
+        lastJoinCode = joinCodeStr;
+        
+        const result = await client.models.RideOffer.create({
+          hostId: profile.id,
+          originLatitude: originLocation.latitude,
+          originLongitude: originLocation.longitude,
+          originAddress: originLocation.address || '',
+          originRegion: originRegionStr || undefined,
+          destinationLatitude: destinationLocation.latitude,
+          destinationLongitude: destinationLocation.longitude,
+          destinationAddress: destinationLocation.address || '',
+          destinationRegion: destinationRegionStr || undefined,
+          departureTime: departureDateTimeISO,
+          departureDate: departureDateStr,
+          availableSeats: availableSeats,
+          seatsBooked: 0,
+          status: 'available',
+          vehicleInfo: vehicleInfo || undefined,
+          notes: notes || undefined,
+          pickupRadius: pickupRadiusKm,
+          dropoffRadius: dropoffRadiusKm,
+          price: price,
+          joinCode: joinCodeStr,
+        }) as { data?: unknown; errors?: unknown[] };
+        
+        if (result.errors) {
+          if (import.meta.env.DEV) {
+            console.error('Error creating ride offer:', result.errors);
+          }
+          const firstError = result.errors[0];
+          const errorMessage = (firstError && typeof firstError === 'object' && 'message' in firstError && typeof (firstError as { message: unknown }).message === 'string')
+            ? (firstError as { message: string }).message
+            : 'Failed to create ride offer. Please try again.';
+          toast.error(errorMessage);
+          setIsSubmitting(false);
+          return;
+        }
+        
+        createdCount++;
+      }
+      
+      const rideOffer = createdCount > 0;
+      const errors = null;
 
       if (errors) {
         if (import.meta.env.DEV) {
@@ -1206,11 +1288,17 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
         return;
       }
 
-      if (rideOffer && joinCodeStr) {
-        toast.success('Ride offer created successfully!');
-        setCreatedOfferWithCode({ joinCode: joinCodeStr });
+      if (rideOffer && lastJoinCode) {
+        const successMessage = createdCount > 1 
+          ? `${createdCount} ride offers created successfully!`
+          : 'Ride offer created successfully!';
+        toast.success(successMessage);
+        setCreatedOfferWithCode({ joinCode: lastJoinCode });
       } else if (rideOffer) {
-        toast.success('Ride offer created successfully!');
+        const successMessage = createdCount > 1 
+          ? `${createdCount} ride offers created successfully!`
+          : 'Ride offer created successfully!';
+        toast.success(successMessage);
         setCurrentView('home');
       }
     } catch (error) {
@@ -1584,18 +1672,186 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
               </div>
             </div>
 
-            {/* Departure Time */}
+            {/* Recurring Ride Options */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Departure Time
+                <RefreshCw className="w-4 h-4 inline mr-1" />
+                Recurring Ride
               </label>
-              <input
-                type="datetime-local"
-                value={departureTime}
-                onChange={(e) => setDepartureTime(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                required
-              />
+              <div className="space-y-3">
+                <div className="flex rounded-lg overflow-hidden border border-gray-200 p-0.5 bg-gray-100">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRecurrence('none');
+                      setSelectedDays([]);
+                    }}
+                    className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+                      recurrence === 'none'
+                        ? 'bg-white text-primary-700 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    One-time
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRecurrence('weekly')}
+                    className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+                      recurrence === 'weekly'
+                        ? 'bg-white text-primary-700 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    Weekly
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRecurrence('hourly');
+                      setSelectedDays([]);
+                    }}
+                    className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+                      recurrence === 'hourly'
+                        ? 'bg-white text-primary-700 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    Hourly
+                  </button>
+                </div>
+                
+                {/* Weekly Schedule - Day Selection */}
+                {recurrence === 'weekly' && (
+                  <div className="p-3 bg-primary-50 rounded-lg space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-primary-900 mb-2">
+                        Select days of the week
+                      </label>
+                      <div className="flex flex-wrap gap-1">
+                        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => (
+                          <button
+                            key={day}
+                            type="button"
+                            onClick={() => {
+                              setSelectedDays(prev => 
+                                prev.includes(index) 
+                                  ? prev.filter(d => d !== index)
+                                  : [...prev, index].sort((a, b) => a - b)
+                              );
+                            }}
+                            className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors min-w-[44px] ${
+                              selectedDays.includes(index)
+                                ? 'bg-primary-600 text-white'
+                                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+                            }`}
+                          >
+                            {day}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex gap-2 mt-2">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedDays([1, 2, 3, 4, 5])}
+                          className="text-xs text-primary-600 hover:text-primary-800 hover:underline"
+                        >
+                          Weekdays
+                        </button>
+                        <span className="text-gray-300">|</span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedDays([0, 6])}
+                          className="text-xs text-primary-600 hover:text-primary-800 hover:underline"
+                        >
+                          Weekends
+                        </button>
+                        <span className="text-gray-300">|</span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedDays([])}
+                          className="text-xs text-primary-600 hover:text-primary-800 hover:underline"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-primary-900 mb-2">
+                        Number of weeks
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="12"
+                        value={weeksToGenerate}
+                        onChange={(e) => setWeeksToGenerate(Math.max(1, Math.min(12, parseInt(e.target.value) || 1)))}
+                        className="w-full px-3 py-2 border border-primary-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      />
+                    </div>
+                    
+                    {selectedDays.length > 0 && (
+                      <p className="text-xs text-primary-700">
+                        This will create up to {selectedDays.length * weeksToGenerate} ride offers 
+                        ({selectedDays.length} day{selectedDays.length > 1 ? 's' : ''}/week × {weeksToGenerate} week{weeksToGenerate > 1 ? 's' : ''}).
+                        Rides are created starting from the selected date.
+                      </p>
+                    )}
+                  </div>
+                )}
+                
+                {/* Hourly Recurrence */}
+                {recurrence === 'hourly' && (
+                  <div className="p-3 bg-primary-50 rounded-lg">
+                    <label className="block text-sm font-medium text-primary-900 mb-2">
+                      Number of hours
+                    </label>
+                    <input
+                      type="number"
+                      min="2"
+                      max="24"
+                      value={hourlyCount}
+                      onChange={(e) => setHourlyCount(Math.max(2, Math.min(24, parseInt(e.target.value) || 2)))}
+                      className="w-full px-3 py-2 border border-primary-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                    <p className="text-xs text-primary-700 mt-2">
+                      This will create {hourlyCount} ride offers, one for each hour starting from the selected time.
+                      Good for shuttle services or regular routes.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Date and Time */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Date and Time
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Date</label>
+                  <input
+                    type="date"
+                    value={departureDate}
+                    onChange={(e) => setDepartureDate(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Time</label>
+                  <input
+                    type="time"
+                    value={departureTimeOnly}
+                    onChange={(e) => setDepartureTimeOnly(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    required
+                  />
+                </div>
+              </div>
             </div>
 
             {/* Available Seats */}
@@ -1654,7 +1910,7 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
               )}
               <button
                 onClick={handleSubmit}
-                disabled={isSubmitting || !originLocation || !destinationLocation || !departureTime || price < PRICE_MIN || price > PRICE_MAX || !isVerified}
+                disabled={isSubmitting || !originLocation || !destinationLocation || !departureDate || !departureTimeOnly || price < PRICE_MIN || price > PRICE_MAX || !isVerified || (recurrence === 'weekly' && selectedDays.length === 0)}
                 className="w-full px-6 py-3 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700 transition-colors shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {isSubmitting ? (

@@ -1,6 +1,6 @@
 import { Authenticator, useAuthenticator } from '@aws-amplify/ui-react';
 import { signOut, fetchUserAttributes, updateUserAttribute, confirmUserAttribute } from 'aws-amplify/auth';
-import { LogOut, User, Settings, Wallet, Activity, Info, FileText, CheckCircle2, Users, UserPlus, Edit2, X, Check, MessageCircle, Calendar } from 'lucide-react';
+import { LogOut, User, Settings, Wallet, Activity, Info, FileText, CheckCircle2, Users, UserPlus, Edit2, X, Check, MessageCircle, Car, MapPin } from 'lucide-react';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { client } from '../client';
 import type { Schema } from '../../amplify/data/resource';
@@ -659,6 +659,36 @@ function AccountContent({
         </div>
       </div>
 
+      {/* Rides - quick access to manage */}
+      <div className="p-4 sm:p-6 border-b border-gray-200">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+          <Car className="w-4 h-4 text-primary-600" aria-hidden />
+          Rides
+        </h3>
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => setCurrentView('findARideMap')}
+            className="w-full flex items-center gap-3 p-3 min-h-[44px] bg-gray-50 hover:bg-gray-100 rounded-lg text-left transition-colors"
+            aria-label="View and manage your ride offers"
+          >
+            <Car className="w-5 h-5 text-primary-600 flex-shrink-0" />
+            <span className="font-medium text-gray-900">My Ride Offers</span>
+            <span className="text-sm text-gray-500 ml-auto hidden sm:inline">View & delete offers</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setCurrentView('bookaRideRequest')}
+            className="w-full flex items-center gap-3 p-3 min-h-[44px] bg-gray-50 hover:bg-gray-100 rounded-lg text-left transition-colors"
+            aria-label="View and manage your ride requests"
+          >
+            <MapPin className="w-5 h-5 text-primary-600 flex-shrink-0" />
+            <span className="font-medium text-gray-900">My Ride Requests</span>
+            <span className="text-sm text-gray-500 ml-auto hidden sm:inline">View & delete requests</span>
+          </button>
+        </div>
+      </div>
+
       {/* Social - Pools & Connections */}
       <div className="p-4 sm:p-6 border-b border-gray-200">
         <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
@@ -685,16 +715,6 @@ function AccountContent({
             <UserPlus className="w-5 h-5 text-primary-600 flex-shrink-0" />
             <span className="font-medium text-gray-900">Connections</span>
             <span className="text-sm text-gray-500 ml-auto hidden sm:inline">Know-person ratings</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setCurrentView('recurringRides')}
-            className="w-full flex items-center gap-3 p-3 min-h-[44px] bg-gray-50 hover:bg-gray-100 rounded-lg text-left transition-colors"
-            aria-label="Recurring rides and templates"
-          >
-            <Calendar className="w-5 h-5 text-primary-600 flex-shrink-0" />
-            <span className="font-medium text-gray-900">Recurring Rides</span>
-            <span className="text-sm text-gray-500 ml-auto hidden sm:inline">Templates & schedules</span>
           </button>
           <button
             type="button"
