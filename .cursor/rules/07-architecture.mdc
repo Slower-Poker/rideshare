@@ -1,0 +1,102 @@
+---
+title: Architecture
+description: Component structure and routing patterns
+priority: 80
+---
+
+# Architecture
+
+## View-Based Routing
+
+All navigation is managed through `currentView` state in `App.tsx`. No React Router.
+
+### Application Views
+
+| View | Component | Purpose | Access |
+|------|-----------|---------|--------|
+| `home` | `HomePage` | Landing page | Public |
+| `map` | `RideMapView` | Map view | Public |
+| `findARideMap` | `FindARideMap` | Find rides on map | Public |
+| `bookRide` | `BookaRide` | Book a ride flow | Auth for booking |
+| `bookRideDetails` | `BookRideDetails` | Ride details | Public / Auth |
+| `bookRideConfirm` | `BookRideConfirm` | Booking confirmation | Auth |
+| `bookaRideRequest` | `BookaRideRequest` | Request a ride | Auth |
+| `offerRide` | `OfferaRide` | Offer a ride | Auth |
+| `ridePlannerChat` | `RidePlannerChat` | AI ride planner (Nova) | Auth required |
+| `pools` | `PoolsView` | Driver/rider pools | Auth |
+| `connections` | `ConnectionsView` | Connections (vouches) | Auth |
+| `account` | `MyAccountView` | User account + sign-in | Public (sign-in UI) |
+| `terms` | `TermsPage` | Terms of service | Public / Auth |
+| `license` | `LicensePage` | License info | Public |
+
+### Navigation Pattern
+
+```typescript
+// In App.tsx
+const [currentView, setCurrentView] = useState<ViewType>('home');
+
+// Shared props passed to views
+const sharedProps = { currentView, setCurrentView, user };
+```
+
+## Component Structure
+
+```
+src/
+├── App.tsx                         # Root: Amplify config, view state, renderView()
+├── components/
+│   ├── HomePage.tsx
+│   ├── BookaRide.tsx
+│   ├── BookRideDetails.tsx
+│   ├── BookRideConfirm.tsx
+│   ├── BookaRideRequest.tsx
+│   ├── FindARideMap.tsx
+│   ├── OfferaRide.tsx
+│   ├── RideMapView.tsx
+│   ├── RidePlannerChat.tsx
+│   ├── PoolsView.tsx
+│   ├── ConnectionsView.tsx
+│   ├── MyAccountView.tsx
+│   ├── TermsPage.tsx
+│   ├── LicensePage.tsx
+│   ├── RateUserModal.tsx
+│   ├── ErrorBoundary.tsx
+│   ├── LoadingFallback.tsx
+│   └── sharedProps.ts
+├── utils/
+│   ├── activeRideStorage.ts        # ⚠️ ONLY localStorage usage
+│   ├── errorHandler.ts
+│   ├── toast.ts
+│   ├── geoUtils.ts
+│   ├── mapUtils.ts
+│   ├── validation.ts
+│   ├── trustApi.ts
+│   └── coopMemberNumber.ts
+├── hooks/
+│   ├── useTermsGate.ts
+│   └── useGeolocation.ts
+└── types/
+    └── index.ts
+
+amplify/
+├── auth/resource.ts
+├── data/resource.ts
+├── backend.ts
+└── functions/
+    └── novaAgentProxy/
+```
+
+## Code Organization Principles
+
+1. **Extract large components** - Keep files under ~300 lines where practical
+2. **Group related logic** in utils or custom hooks
+3. **Shared props** - Use `SharedProps` / `currentView`, `setCurrentView`, `user` from `sharedProps.ts`
+4. **Lazy loading** - Optional: use `React.lazy()` + `Suspense` for heavy views if needed
+
+## When to Extract Components
+
+- File exceeds ~300 lines
+- Reusable UI or logic appears in multiple places
+- Testing or readability benefits from isolation
+
+Keep together when logic is tightly coupled or extraction would cause heavy prop drilling.

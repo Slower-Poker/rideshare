@@ -1,0 +1,523 @@
+---
+title: WCAG 2.1 Level AA Accessibility Compliance
+description: Manitoba accessibility law compliance - required for all UI components
+priority: 95
+---
+
+# Manitoba WCAG 2.1 Level AA Compliance
+
+## Legal Requirements
+
+This website MUST comply with Manitoba's Accessibility for Manitobans Act and the Accessible Information and Communication Standard Regulation. All web content must meet WCAG 2.1 Level AA standards as required by law (deadline: May 1, 2025 for private sector).
+
+## Core Principles
+
+Always apply these four WCAG principles to every component, page, and feature:
+
+1. **Perceivable** - Information must be presentable to users in ways they can perceive
+2. **Operable** - UI components must be operable by all users
+3. **Understandable** - Information and operation must be understandable
+4. **Robust** - Content must work with current and future assistive technologies
+
+---
+
+## Mandatory Requirements for All Code
+
+### 1. Semantic HTML
+
+- Always use semantic HTML5 elements (`<header>`, `<nav>`, `<main>`, `<article>`, `<aside>`, `<footer>`)
+- Use proper heading hierarchy (h1 → h2 → h3, never skip levels)
+- Use `<button>` for actions, `<a>` for navigation
+- Never use `<div>` or `<span>` for interactive elements
+
+### 2. Keyboard Accessibility
+
+- All interactive elements must be keyboard accessible (Tab, Enter, Space, Arrow keys)
+- Implement visible focus indicators (min 2px outline, 3:1 contrast ratio)
+- No keyboard traps - users must be able to navigate away from any element
+- Provide skip navigation links: `<a href="#main-content">Skip to main content</a>`
+- Custom components must handle keyboard events (onKeyDown for Enter/Space)
+
+### 3. Color and Contrast (CRITICAL)
+
+- Normal text: minimum 4.5:1 contrast ratio
+- Large text (18pt+/14pt+ bold): minimum 3:1 contrast ratio
+- UI components and graphics: minimum 3:1 contrast ratio
+- Never convey information by color alone (use icons, text, patterns)
+- Test with tools like WebAIM Contrast Checker or browser DevTools
+
+### 4. Alternative Text
+
+```typescript
+// Images
+<img src="logo.png" alt="Company Name - Home" />
+
+// Decorative images
+<img src="decoration.svg" alt="" />
+
+// Complex images
+<img src="chart.png" alt="Sales data chart" aria-describedby="chart-description" />
+<div id="chart-description">Detailed description of chart data...</div>
+
+// Icon buttons
+<button aria-label="Close dialog">
+  <XIcon aria-hidden="true" />
+</button>
+
+// Background images with content
+<div role="img" aria-label="Description of background image content">
+  {/* content */}
+</div>
+```
+
+### 5. Forms and Input Validation
+
+```typescript
+// Always associate labels with inputs
+<label htmlFor="email">Email Address *</label>
+<input 
+  id="email" 
+  type="email"
+  required
+  aria-required="true"
+  aria-invalid={emailError ? "true" : "false"}
+  aria-describedby={emailError ? "email-error" : undefined}
+/>
+{emailError && (
+  <div id="email-error" role="alert" className="error">
+    {emailError}
+  </div>
+)}
+
+// Fieldset for grouped inputs
+<fieldset>
+  <legend>Shipping Address</legend>
+  {/* address fields */}
+</fieldset>
+
+// Provide clear error messages with suggestions
+// Mark required fields visually and programmatically
+// Provide confirmation for important transactions
+```
+
+### 6. ARIA Landmarks and Roles
+
+```typescript
+<header role="banner">
+  <nav role="navigation" aria-label="Main navigation">
+    {/* nav items */}
+  </nav>
+</header>
+
+<main role="main" id="main-content">
+  <article role="article">
+    {/* content */}
+  </article>
+</main>
+
+<aside role="complementary" aria-label="Related information">
+  {/* sidebar */}
+</aside>
+
+<footer role="contentinfo">
+  {/* footer */}
+</footer>
+
+// Multiple navigation areas
+<nav aria-label="Primary navigation">{/* ... */}</nav>
+<nav aria-label="Footer navigation">{/* ... */}</nav>
+```
+
+### 7. Dynamic Content and State Management
+
+```typescript
+// Live regions for dynamic updates
+<div role="status" aria-live="polite" aria-atomic="true">
+  {statusMessage}
+</div>
+
+<div role="alert" aria-live="assertive">
+  {errorMessage}
+</div>
+
+// Loading states
+<button disabled={isLoading} aria-busy={isLoading}>
+  {isLoading ? 'Loading...' : 'Submit'}
+</button>
+
+// Expandable sections
+<button 
+  aria-expanded={isOpen}
+  aria-controls="content-panel"
+  onClick={() => setIsOpen(!isOpen)}
+>
+  Toggle Content
+</button>
+<div id="content-panel" hidden={!isOpen}>
+  {/* content */}
+</div>
+```
+
+### 8. Modal Dialogs and Focus Management
+
+```typescript
+const Dialog = ({ isOpen, onClose, title, children }) => {
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  
+  useEffect(() => {
+    if (isOpen) {
+      // Trap focus in modal
+      const previouslyFocused = document.activeElement;
+      closeButtonRef.current?.focus();
+      
+      return () => {
+        // Return focus when closed
+        (previouslyFocused as HTMLElement)?.focus();
+      };
+    }
+  }, [isOpen]);
+  
+  if (!isOpen) return null;
+  
+  return (
+    <div 
+      role="dialog" 
+      aria-modal="true"
+      aria-labelledby="dialog-title"
+    >
+      <h2 id="dialog-title">{title}</h2>
+      {children}
+      <button ref={closeButtonRef} onClick={onClose}>
+        Close
+      </button>
+    </div>
+  );
+};
+```
+
+#### Exception: Home Page Join Code Input
+
+**IMPORTANT**: The "Join a Ride" input field on the HomePage (`id="join-code-input"`) must NOT auto-focus when the page loads. This is an intentional UX decision to prevent the cursor from automatically focusing on this field when users navigate to the home page.
+
+```typescript
+// HomePage.tsx - Join code input should NOT auto-focus
+<input
+  ref={joinCodeInputRef}
+  id="join-code-input"
+  type="text"
+  autoFocus={false}  // Explicitly set to false
+  // ... other props
+/>
+
+// Prevent any auto-focus behavior
+useEffect(() => {
+  if (joinCodeInputRef.current && document.activeElement === joinCodeInputRef.current) {
+    joinCodeInputRef.current.blur();
+  }
+}, []);
+```
+
+**Rationale**: Auto-focusing the join code input on page load creates a poor user experience, especially for users who are not immediately ready to join a ride. Users should be able to explore the page without the input field automatically receiving focus.
+
+### 9. Responsive and Resizable
+
+- Content must be readable and functional up to 200% zoom
+- Use relative units (rem, em) instead of fixed pixels
+- Support viewport zoom (no `user-scalable=no` in meta viewport)
+- Responsive breakpoints for mobile, tablet, desktop
+- Test with browser zoom at 100%, 150%, 200%
+
+### 10. Multimedia Content
+
+```typescript
+// Video with captions and audio description
+<video controls>
+  <source src="video.mp4" type="video/mp4" />
+  <track kind="captions" src="captions-en.vtt" srclang="en" label="English" />
+  <track kind="descriptions" src="descriptions-en.vtt" srclang="en" />
+</video>
+
+// Audio with transcript
+<audio controls>
+  <source src="podcast.mp3" type="audio/mpeg" />
+</audio>
+<details>
+  <summary>Transcript</summary>
+  <p>{transcript}</p>
+</details>
+```
+
+---
+
+## TypeScript/React Specific Patterns
+
+### Component Template
+
+```typescript
+interface AccessibleButtonProps {
+  onClick: () => void;
+  children: React.ReactNode;
+  ariaLabel?: string;
+  disabled?: boolean;
+}
+
+const AccessibleButton: React.FC<AccessibleButtonProps> = ({
+  onClick,
+  children,
+  ariaLabel,
+  disabled = false
+}) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onClick();
+    }
+  };
+  
+  return (
+    <button
+      onClick={onClick}
+      onKeyDown={handleKeyDown}
+      aria-label={ariaLabel}
+      disabled={disabled}
+      className="accessible-button"
+    >
+      {children}
+    </button>
+  );
+};
+```
+
+### Custom Hook for Focus Management
+
+```typescript
+const useFocusTrap = (isActive: boolean) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    if (!isActive) return;
+    
+    const container = containerRef.current;
+    if (!container) return;
+    
+    const focusableElements = container.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    
+    const firstElement = focusableElements[0] as HTMLElement;
+    const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
+    
+    const handleTab = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+      
+      if (e.shiftKey) {
+        if (document.activeElement === firstElement) {
+          lastElement.focus();
+          e.preventDefault();
+        }
+      } else {
+        if (document.activeElement === lastElement) {
+          firstElement.focus();
+          e.preventDefault();
+        }
+      }
+    };
+    
+    container.addEventListener('keydown', handleTab);
+    return () => container.removeEventListener('keydown', handleTab);
+  }, [isActive]);
+  
+  return containerRef;
+};
+```
+
+---
+
+## AWS Amplify Gen 2 Specific Guidelines
+
+### 1. Amplify UI Components
+
+When using Amplify UI components, always enhance with accessibility:
+
+```typescript
+import { Authenticator, Button, TextField } from '@aws-amplify/ui-react';
+
+// Add ARIA labels to Amplify components
+<TextField
+  label="Email"
+  name="email"
+  type="email"
+  required
+  aria-required="true"
+  autoComplete="email"
+/>
+
+<Button 
+  onClick={handleSubmit}
+  ariaLabel="Submit form"
+  isLoading={isLoading}
+  loadingText="Submitting..."
+>
+  Submit
+</Button>
+```
+
+### 2. Server-Side Rendering (SSR) Considerations
+
+```typescript
+// Ensure proper meta tags for accessibility
+export const metadata = {
+  title: 'Page Title - Site Name',
+  description: 'Clear, descriptive page description',
+  viewport: 'width=device-width, initial-scale=1, maximum-scale=5',
+  // Never use maximum-scale=1 or user-scalable=no
+};
+
+// Set language attribute
+<html lang="en">
+```
+
+### 3. API Error Handling with Accessible Feedback
+
+```typescript
+import { generateClient } from 'aws-amplify/api';
+
+const handleAPICall = async () => {
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  
+  try {
+    const client = generateClient();
+    const result = await client.graphql({ query: myQuery });
+    setSuccess('Operation completed successfully');
+    // Announce to screen readers
+  } catch (err) {
+    const message = 'An error occurred. Please try again or contact support.';
+    setError(message);
+    // Focus on error message
+  }
+};
+
+return (
+  <>
+    {error && (
+      <div role="alert" className="error" tabIndex={-1}>
+        {error}
+      </div>
+    )}
+    {success && (
+      <div role="status" aria-live="polite">
+        {success}
+      </div>
+    )}
+  </>
+);
+```
+
+---
+
+## Testing Checklist
+
+Before considering any feature complete, verify:
+
+- [ ] Keyboard navigation works for all interactions (Tab, Enter, Space, Arrows, Esc)
+- [ ] Visible focus indicators on all focusable elements
+- [ ] Color contrast meets 4.5:1 (normal text) or 3:1 (large text/UI)
+- [ ] Screen reader announces all content correctly (test with NVDA/JAWS/VoiceOver)
+- [ ] All images have appropriate alt text or alt=""
+- [ ] Forms have associated labels and clear error messages
+- [ ] Heading hierarchy is logical (no skipped levels)
+- [ ] Page has a descriptive title
+- [ ] Content is readable and functional at 200% zoom
+- [ ] No information conveyed by color alone
+- [ ] Dynamic content updates are announced to screen readers
+- [ ] Modal dialogs trap and restore focus properly
+- [ ] Video/audio has captions and transcripts
+- [ ] Site works without JavaScript (progressive enhancement)
+- [ ] Automated testing with axe DevTools or Lighthouse shows no violations
+
+---
+
+## Tools for Testing
+
+1. **Browser Extensions**
+   - axe DevTools (Chrome/Firefox)
+   - WAVE (WebAIM)
+   - Lighthouse (Chrome DevTools)
+
+2. **Screen Readers**
+   - NVDA (Windows - free)
+   - JAWS (Windows)
+   - VoiceOver (macOS/iOS)
+   - TalkBack (Android)
+
+3. **Contrast Checkers**
+   - WebAIM Contrast Checker
+   - Chrome DevTools Color Picker
+
+4. **Automated Testing**
+
+```typescript
+// Install jest-axe
+npm install --save-dev jest-axe @testing-library/react
+
+// Test component accessibility
+import { axe, toHaveNoViolations } from 'jest-axe';
+expect.extend(toHaveNoViolations);
+
+test('Button has no accessibility violations', async () => {
+  const { container } = render(<AccessibleButton onClick={() => {}}>Click</AccessibleButton>);
+  const results = await axe(container);
+  expect(results).toHaveNoViolations();
+});
+```
+
+---
+
+## Common Mistakes to Avoid
+
+❌ **DON'T:**
+- Use `<div onClick>` instead of `<button>`
+- Skip heading levels (h1 → h3)
+- Use `tabindex` values greater than 0
+- Rely on placeholder text alone (use labels)
+- Remove focus outlines without providing alternatives
+- Use color alone to convey meaning
+- Create keyboard traps
+- Use `title` attribute as a replacement for proper labeling
+- Disable zoom (`user-scalable=no`)
+
+✅ **DO:**
+- Use semantic HTML
+- Provide text alternatives for non-text content
+- Ensure keyboard accessibility
+- Maintain proper heading hierarchy
+- Test with real assistive technologies
+- Use ARIA when semantic HTML isn't sufficient
+- Provide multiple ways to find content (navigation, search, sitemap)
+- Write clear error messages with recovery suggestions
+
+---
+
+## When to Use ARIA
+
+ARIA should supplement semantic HTML, not replace it. Use ARIA when:
+- Semantic HTML doesn't exist for the pattern (tabs, accordions, dialogs)
+- You need to provide additional context (aria-label, aria-describedby)
+- Managing dynamic content (aria-live, aria-busy)
+- Indicating state (aria-expanded, aria-selected, aria-checked)
+
+**First Rule of ARIA**: If you can use a native HTML element or attribute, do that instead.
+
+---
+
+## Resources
+
+- WCAG 2.1 Guidelines: https://www.w3.org/WAI/WCAG21/quickref/
+- Manitoba Accessibility Office: accessibility@gov.mb.ca
+- WAI-ARIA Authoring Practices: https://www.w3.org/WAI/ARIA/apg/
+- WebAIM: https://webaim.org/
+
+---
+
+**Remember**: Accessibility is not a feature to add at the end—it must be built into every component from the start. When in doubt, test with real assistive technologies and real users.

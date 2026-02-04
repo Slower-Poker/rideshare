@@ -1,0 +1,87 @@
+---
+title: File Path Reference
+description: Quick reference for finding features in the codebase
+priority: 85
+---
+
+# File Path Reference
+
+## When User Asks About...
+
+| Feature | Primary File(s) | Related Files |
+|---------|-----------------|---------------|
+| **Book a ride** | `components/BookaRide.tsx` | `BookRideDetails.tsx`, `BookRideConfirm.tsx` |
+| **Request a ride** | `components/BookaRideRequest.tsx` | `amplify/data/resource.ts` (RideRequest) |
+| **Offer a ride** | `components/OfferaRide.tsx` | `amplify/data/resource.ts` (RideOffer) |
+| **Find rides (map)** | `components/FindARideMap.tsx` | `RideMapView.tsx`, `utils/mapUtils.ts`, `utils/geoUtils.ts` |
+| **Ride Planner (AI)** | `components/RidePlannerChat.tsx` | `amplify/functions/novaAgentProxy/` |
+| **Pools** | `components/PoolsView.tsx` | HostPool, RiderPool in data schema |
+| **Connections** | `components/ConnectionsView.tsx` | Connection model, trustApi |
+| **Ratings** | `components/RateUserModal.tsx` | RideRating model |
+| **Authentication** | `src/App.tsx` | `amplify/auth/resource.ts`, `MyAccountView.tsx` |
+| **Data models** | `amplify/data/resource.ts` | `src/types/index.ts` |
+| **Terms** | `hooks/useTermsGate.ts` | `TermsPage.tsx` |
+| **Active ride persistence** | `utils/activeRideStorage.ts` | Types: ActiveRideData |
+| **Error handling** | `utils/errorHandler.ts` | All components |
+| **Toasts** | `utils/toast.ts` | All components |
+| **Geo / distance** | `utils/geoUtils.ts` | `hooks/useGeolocation.ts` |
+| **Map helpers** | `utils/mapUtils.ts` | Leaflet, FindARideMap, RideMapView |
+| **Validation** | `utils/validation.ts` | Zod schemas |
+| **Trust / coop member** | `utils/trustApi.ts`, `utils/coopMemberNumber.ts` | Connections, profile |
+
+## Configuration Files
+
+| File | Purpose | When to Modify |
+|------|---------|----------------|
+| `amplify/auth/resource.ts` | Auth config (SSO) | Adding auth providers |
+| `amplify/data/resource.ts` | Data schema | Adding/modifying models |
+| `amplify/backend.ts` | Backend definition | Adding functions, resources |
+| `vite.config.ts` | Build + PWA | Build optimization |
+| `tailwind.config.js` | Tailwind | Extending Tailwind |
+| `tsconfig.json` | TypeScript | TypeScript settings |
+| `playwright.config.ts` | E2E tests | Test settings |
+
+## Common Code Paths
+
+### Authentication Flow
+```
+App.tsx (getCurrentUser, setUser)
+  → MyAccountView.tsx (Authenticator when !user)
+  → amplify/auth/resource.ts
+  → UserProfile in amplify/data/resource.ts
+```
+
+### Book Ride Flow
+```
+HomePage / FindARideMap → setCurrentView('bookRide')
+  → BookaRide → BookRideDetails → BookRideConfirm
+  → RideParticipant create/update (Amplify Data)
+```
+
+### Offer Ride Flow
+```
+setCurrentView('offerRide') → OfferaRide.tsx
+  → RideOffer create (Amplify Data)
+```
+
+### Ride Planner (Nova) Flow
+```
+RidePlannerChat.tsx
+  → client.models.ChatRidePlanner.query({ message, conversationId })
+  → amplify/data/resource.ts (chatRidePlanner handler)
+  → amplify/functions/novaAgentProxy (Lambda)
+```
+
+### Active Ride Persistence
+```
+Component state changes (e.g. active ride)
+  → utils/activeRideStorage.ts (localStorage)
+  → Restoration on mount (e.g. from storage)
+```
+
+### View Restoration
+```
+App.tsx initial state
+  → sessionStorage.getItem(VIEW_STORAGE_KEY)
+  → Restore currentView for home, map, account, etc. (not terms/license)
+```

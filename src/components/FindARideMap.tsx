@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Loader2, MapPin } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Loader2, MapPin, Clock, DollarSign, Users, Trash2, Map as MapIcon } from 'lucide-react';
 import { client } from '../client';
-import type { SharedProps, Location, RideRequest } from '../types';
+import type { SharedProps, Location, Ride } from '../types';
 import { loadMapLibre, isMapLibreLoaded, getMapLibreInstance } from '../utils/maplibreLoader';
+import { RideStatusBadge, RideTypeBadge } from './RideStatusBadge';
+import { formatRelativeDate } from '../utils/rideUtils';
 import {
   DEFAULT_CENTER,
   DEFAULT_ZOOM,
@@ -14,13 +17,155 @@ import {
 } from '../utils/maplibreUtils';
 import { toast } from '../utils/toast';
 
+/**
+ * Calculate OSM tile coordinates from lat/lng
+ */
+function latLngToTile(lat: number, lng: number, zoom: number): { x: number; y: number } {
+  const n = Math.pow(2, zoom);
+  const x = Math.floor((lng + 180) / 360 * n);
+  const latRad = lat * Math.PI / 180;
+  const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n);
+  return { x, y };
+}
+
+/**
+ * Calculate appropriate zoom level based on the distance between points
+ */
+function calculateZoomLevel(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const latDiff = Math.abs(lat1 - lat2);
+  const lngDiff = Math.abs(lng1 - lng2);
+  const maxDiff = Math.max(latDiff, lngDiff);
+  
+  if (maxDiff > 2) return 7;
+  if (maxDiff > 1) return 8;
+  if (maxDiff > 0.5) return 9;
+  if (maxDiff > 0.2) return 10;
+  if (maxDiff > 0.1) return 11;
+  if (maxDiff > 0.05) return 12;
+  return 13;
+}
+
+/**
+ * MapPreview component - renders actual map tile with route markers overlay
+ */
+function MapPreviewPlaceholder({ 
+  originLat, 
+  originLng, 
+  destLat, 
+  destLng 
+}: { 
+  originLat: number; 
+  originLng: number; 
+  destLat: number; 
+  destLng: number;
+}) {
+  // Calculate center point and zoom level
+  const centerLat = (originLat + destLat) / 2;
+  const centerLng = (originLng + destLng) / 2;
+  const zoom = calculateZoomLevel(originLat, originLng, destLat, destLng);
+  
+  // Get tile coordinates for the center
+  const tile = latLngToTile(centerLat, centerLng, zoom);
+  
+  // Generate OSM tile URL
+  const tileUrl = `https://tile.openstreetmap.org/${zoom}/${tile.x}/${tile.y}.png`;
+  
+  // Calculate marker positions within the tile (as percentage)
+  // Each tile covers a specific geographic area
+  const n = Math.pow(2, zoom);
+  const tileMinLng = tile.x / n * 360 - 180;
+  const tileMaxLng = (tile.x + 1) / n * 360 - 180;
+  const tileMinLatRad = Math.atan(Math.sinh(Math.PI * (1 - 2 * (tile.y + 1) / n)));
+  const tileMaxLatRad = Math.atan(Math.sinh(Math.PI * (1 - 2 * tile.y / n)));
+  const tileMinLat = tileMinLatRad * 180 / Math.PI;
+  const tileMaxLat = tileMaxLatRad * 180 / Math.PI;
+  
+  // Calculate marker positions as percentages within the tile
+  const originX = ((originLng - tileMinLng) / (tileMaxLng - tileMinLng)) * 100;
+  const originY = ((tileMaxLat - originLat) / (tileMaxLat - tileMinLat)) * 100;
+  const destX = ((destLng - tileMinLng) / (tileMaxLng - tileMinLng)) * 100;
+  const destY = ((tileMaxLat - destLat) / (tileMaxLat - tileMinLat)) * 100;
+  
+  // Clamp values to stay within bounds
+  const clamp = (val: number) => Math.max(5, Math.min(95, val));
+  
+  return (
+    <div className="relative w-full h-full overflow-hidden">
+      {/* Map tile background */}
+      <img
+        src={tileUrl}
+        alt=""
+        className="absolute inset-0 w-full h-full object-cover"
+        loading="lazy"
+        crossOrigin="anonymous"
+        onError={(e) => {
+          // Fallback to gradient if tile fails to load
+          e.currentTarget.style.display = 'none';
+        }}
+      />
+      
+      {/* Fallback gradient background */}
+      <div className="absolute inset-0 bg-gradient-to-br from-teal-50 to-blue-50" style={{ zIndex: -1 }} />
+      
+      {/* Route overlay SVG */}
+      <svg 
+        viewBox="0 0 100 100" 
+        className="absolute inset-0 w-full h-full" 
+        aria-hidden="true"
+        preserveAspectRatio="none"
+      >
+        {/* Route line */}
+        <line 
+          x1={clamp(originX)} 
+          y1={clamp(originY)} 
+          x2={clamp(destX)} 
+          y2={clamp(destY)} 
+          stroke="#10b981" 
+          strokeWidth="3" 
+          strokeLinecap="round"
+          strokeOpacity="0.8"
+        />
+        
+        {/* Origin marker (green) */}
+        <circle 
+          cx={clamp(originX)} 
+          cy={clamp(originY)} 
+          r="6" 
+          fill="#10b981" 
+          stroke="white" 
+          strokeWidth="2" 
+        />
+        
+        {/* Destination marker (red) */}
+        <circle 
+          cx={clamp(destX)} 
+          cy={clamp(destY)} 
+          r="6" 
+          fill="#ef4444" 
+          stroke="white" 
+          strokeWidth="2" 
+        />
+      </svg>
+    </div>
+  );
+}
+
+/**
+ * Truncate address to a reasonable length for compact display
+ */
+function truncateAddress(address: string | null | undefined, maxLength = 25): string {
+  if (!address) return 'Location';
+  if (address.length <= maxLength) return address;
+  return address.slice(0, maxLength - 3) + '...';
+}
+
 // MapLibre marker types
 type MapLibreMap = any;
 type MapLibreMarker = any;
 type MapLibreCircle = any;
 
-interface RideRequestMarker {
-  rideRequest: RideRequest;
+interface RideMarkerData {
+  ride: Ride;
   actualPickupLocation: Location;
   displayPickupLocation: Location; // Random position within 700m circle
   actualDropoffLocation: Location | null;
@@ -83,11 +228,32 @@ function randomPointInCircle(centerLat: number, centerLng: number, radiusKm: num
   };
 }
 
+type ListTab = 'requests' | 'offers';
+type ViewMode = 'list' | 'map';
+
+function formatOfferDeparture(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  } catch {
+    return iso;
+  }
+}
+
 export function FindARideMap({ setCurrentView, user }: SharedProps) {
-  const [rideRequests, setRideRequests] = useState<RideRequest[]>([]);
+  const [tab, setTab] = useState<ListTab>('requests');
+  const [viewMode, setViewMode] = useState<ViewMode>('map');
+  const [rideRequests, setRideRequests] = useState<Ride[]>([]);
+  const [rideOffers, setRideOffers] = useState<Ride[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingOffers, setLoadingOffers] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [userProfileId, setUserProfileId] = useState<string | null>(null);
+  const [showNotifyForm, setShowNotifyForm] = useState(false);
+  const [notifyOrigin, setNotifyOrigin] = useState('');
+  const [notifyDest, setNotifyDest] = useState('');
+  const [savingAlert, setSavingAlert] = useState(false);
+  const [deletingOfferId, setDeletingOfferId] = useState<string | null>(null);
+  const [highlightedOfferId, setHighlightedOfferId] = useState<string | null>(null);
   
   // MapLibre loading states
   const [isScriptLoading, setIsScriptLoading] = useState(false);
@@ -96,7 +262,8 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
   const [containerReady, setContainerReady] = useState(false);
   
   const mapRef = useRef<MapLibreMap | null>(null);
-  const markersRef = useRef<RideRequestMarker[]>([]);
+  const markersRef = useRef<RideMarkerData[]>([]);
+  const offerMarkersRef = useRef<MapLibreMarker[]>([]); // Separate ref for offer markers
   const containerRef = useRef<HTMLDivElement | null>(null);
   const containerRetryCountRef = useRef(0);
   const maxRetries = 20;
@@ -110,34 +277,34 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
     setContainerReady(!!node);
   }, []);
 
-  // Handle cancel ride request
-  const handleCancelRide = useCallback(async (requestId: string, map: any) => {
+  // Handle cancel ride (works for both requests and offers)
+  const handleCancelRide = useCallback(async (rideId: string, map: any) => {
     if (!user) {
-      toast.error('Please sign in to cancel ride requests');
+      toast.error('Please sign in to cancel rides');
       return;
     }
 
-    if (!confirm('Are you sure you want to cancel this ride request?')) {
+    if (!confirm('Are you sure you want to cancel this ride?')) {
       return;
     }
 
     try {
-      const { data, errors } = await client.models.RideRequest.update({
-        id: requestId,
+      const { data, errors } = await client.models.Ride.update({
+        id: rideId,
         status: 'cancelled',
       });
 
       if (errors) {
-        console.error('Error cancelling ride request:', errors);
-        toast.error('Failed to cancel ride request. Please try again.');
+        console.error('Error cancelling ride:', errors);
+        toast.error('Failed to cancel ride. Please try again.');
         return;
       }
 
       if (data) {
-        toast.success('Ride request cancelled successfully');
+        toast.success('Ride cancelled successfully');
         
         // Remove marker and route from map
-        const markerData = markersRef.current.find(m => m.rideRequest.id === requestId);
+        const markerData = markersRef.current.find(m => m.ride.id === rideId);
         if (markerData) {
           try {
             if (markerData.marker) {
@@ -158,19 +325,20 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
         }
         
         // Remove from markers array
-        markersRef.current = markersRef.current.filter(m => m.rideRequest.id !== requestId);
+        markersRef.current = markersRef.current.filter(m => m.ride.id !== rideId);
         
-        if (selectedRequestIdRef.current === requestId) {
+        if (selectedRequestIdRef.current === rideId) {
           selectedRequestIdRef.current = null;
         }
         
         // Reload ride requests
-        const { data: updatedRequests, errors: listErrors } = await client.models.RideRequest.list({
+        const { data: updatedRequests, errors: listErrors } = await client.models.Ride.list({
           filter: {
-            status: { eq: 'pending' },
+            rideType: { eq: 'request' },
+            status: { eq: 'open' },
           },
           limit: 100,
-        });
+        }) as { data?: Ride[]; errors?: unknown[] };
 
         if (!listErrors && updatedRequests) {
           const sorted = updatedRequests.sort((a, b) => {
@@ -182,10 +350,49 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
         }
       }
     } catch (err) {
-      console.error('Error cancelling ride request:', err);
+      console.error('Error cancelling ride:', err);
       toast.error('An error occurred. Please try again.');
     }
   }, [user]);
+
+  // Handle delete/cancel ride offer
+  const handleDeleteOffer = useCallback(async (offerId: string) => {
+    if (!user) {
+      toast.error('Please sign in to cancel rides');
+      return;
+    }
+
+    if (!confirm('Are you sure you want to cancel this ride? This cannot be undone.')) {
+      return;
+    }
+
+    setDeletingOfferId(offerId);
+    try {
+      // Cancel the ride instead of deleting
+      const { errors } = await client.models.Ride.update({ 
+        id: offerId,
+        status: 'cancelled',
+      });
+      if (errors?.length) {
+        console.error('Error cancelling ride:', errors);
+        toast.error('Failed to cancel ride');
+      } else {
+        toast.success('Ride cancelled');
+        setRideOffers((prev) => prev.filter((o) => o.id !== offerId));
+      }
+    } catch (e) {
+      console.error('Error cancelling ride:', e);
+      toast.error('Failed to cancel ride');
+    } finally {
+      setDeletingOfferId(null);
+    }
+  }, [user]);
+
+  // Handle viewing offer on map
+  const handleViewOnMap = useCallback((offerId: string) => {
+    setHighlightedOfferId(offerId);
+    setViewMode('map');
+  }, []);
 
   // Handle marker click to show route and dropoff
   const handleMarkerClick = useCallback((requestId: string, map: any, maplibregl: any) => {
@@ -195,7 +402,7 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
     }
 
     // Find the marker data
-    const markerData = markersRef.current.find(m => m.rideRequest.id === requestId);
+    const markerData = markersRef.current.find(m => m.ride.id === requestId);
     if (!markerData || !markerData.actualDropoffLocation || !markerData.displayDropoffLocation) {
       return;
     }
@@ -208,7 +415,7 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
 
     // Remove previous route and dropoff marker if different request
     if (selectedRequestIdRef.current && selectedRequestIdRef.current !== requestId) {
-      const previousMarker = markersRef.current.find(m => m.rideRequest.id === selectedRequestIdRef.current);
+      const previousMarker = markersRef.current.find(m => m.ride.id === selectedRequestIdRef.current);
       if (previousMarker) {
         try {
           if (previousMarker.dropoffMarker) {
@@ -412,7 +619,7 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
       if (mapRef.current) {
         try {
           const map = mapRef.current;
-          // Remove all markers, dropoff markers, and routes
+          // Remove all request markers, dropoff markers, and routes
           markersRef.current.forEach(({ marker, dropoffMarker, routeSourceId, routeLayerId }) => {
             try {
               if (marker) marker.remove();
@@ -429,6 +636,16 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
             }
           });
           markersRef.current = [];
+          
+          // Remove all offer markers
+          offerMarkersRef.current.forEach((marker) => {
+            try {
+              if (marker) marker.remove();
+            } catch (e) {
+              // Ignore errors
+            }
+          });
+          offerMarkersRef.current = [];
           
           // Remove map
           mapRef.current.remove();
@@ -483,20 +700,14 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
       setError(null);
 
       try {
-        if (!client.models.RideRequest) {
-          const errorMsg = 'RideRequest model not available. Please restart the Amplify sandbox.';
-          setError(errorMsg);
-          toast.error('Ride request feature is not available yet.');
-          setLoading(false);
-          return;
-        }
-
-        const { data, errors } = await client.models.RideRequest.list({
+        // Load rides with rideType: 'request' and status: 'open'
+        const { data, errors } = await client.models.Ride.list({
           filter: {
-            status: { eq: 'pending' }, // Only show pending requests
+            rideType: { eq: 'request' },
+            status: { eq: 'open' },
           },
           limit: 100,
-        });
+        }) as { data?: Ride[]; errors?: unknown[] };
 
         if (errors) {
           console.error('Error loading ride requests:', errors);
@@ -521,6 +732,46 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
 
     loadRideRequests();
   }, []);
+
+  // Load ride offers when tab is offers
+  useEffect(() => {
+    if (tab !== 'offers') return;
+    let cancelled = false;
+    async function loadOffers() {
+      setLoadingOffers(true);
+      try {
+        // Load rides with rideType: 'offer' and status: 'open' or 'scheduled'
+        const raw: { data?: Ride[]; errors?: unknown[] } = await client.models.Ride.list({
+          filter: {
+            rideType: { eq: 'offer' },
+            status: { eq: 'open' },
+          },
+          limit: 50,
+        }) as { data?: Ride[]; errors?: unknown[] };
+        const data = raw.data;
+        const errors = raw.errors;
+        if (cancelled) return;
+        if (errors?.length) {
+          if (import.meta.env.DEV) console.error('Error loading ride offers:', errors);
+          setRideOffers([]);
+        } else {
+          const sorted = (data || []).sort((a, b) => {
+            const tA = new Date(a.departureTime ?? 0).getTime();
+            const tB = new Date(b.departureTime ?? 0).getTime();
+            return tA - tB;
+          });
+          setRideOffers(sorted as Ride[]);
+        }
+      } catch (err) {
+        if (import.meta.env.DEV) console.error('Error loading ride offers:', err);
+        if (!cancelled) setRideOffers([]);
+      } finally {
+        if (!cancelled) setLoadingOffers(false);
+      }
+    }
+    loadOffers();
+    return () => { cancelled = true; };
+  }, [tab]);
 
   // Validate container dimensions
   const validateContainerDimensions = (): boolean => {
@@ -714,14 +965,14 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
       const RADIUS_KM = 0.7; // 700 meters = 0.7 km
 
       rideRequests.forEach((rideRequest) => {
-        if (!rideRequest.pickupLatitude || !rideRequest.pickupLongitude) {
+        if (!rideRequest.originLatitude || !rideRequest.originLongitude) {
           return;
         }
 
         const actualPickupLocation: Location = {
-          latitude: rideRequest.pickupLatitude,
-          longitude: rideRequest.pickupLongitude,
-          address: rideRequest.pickupAddress || undefined,
+          latitude: rideRequest.originLatitude,
+          longitude: rideRequest.originLongitude,
+          address: rideRequest.originAddress || undefined,
         };
 
         // Generate random position within 700m circle for pickup
@@ -735,11 +986,11 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
         let actualDropoffLocation: Location | null = null;
         let displayDropoffLocation: Location | null = null;
         
-        if (rideRequest.dropoffLatitude && rideRequest.dropoffLongitude) {
+        if (rideRequest.destinationLatitude && rideRequest.destinationLongitude) {
           actualDropoffLocation = {
-            latitude: rideRequest.dropoffLatitude,
-            longitude: rideRequest.dropoffLongitude,
-            address: rideRequest.dropoffAddress || undefined,
+            latitude: rideRequest.destinationLatitude,
+            longitude: rideRequest.destinationLongitude,
+            address: rideRequest.destinationAddress || undefined,
           };
           
           // Generate random position within 700m circle for dropoff
@@ -781,8 +1032,8 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
           const routeSourceId = `route-${rideRequest.id}`;
           const routeLayerId = `route-layer-${rideRequest.id}`;
           
-          // Check if current user is the requester
-          const isOwner = userProfileId && rideRequest.requesterId === userProfileId;
+          // Check if current user is the requester (creator)
+          const isOwner = userProfileId && rideRequest.hostId === userProfileId;
 
           const marker = new maplibregl.Marker({ element: el })
             .setLngLat(locationToCoordinates(displayPickupLocation))
@@ -793,8 +1044,8 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
                     <p style="font-weight: 600; color: #3b82f6; margin: 0 0 8px 0;">Ride Request</p>
                     <p style="font-size: 12px; color: #666; margin: 4px 0;"><strong>Pickup:</strong> ${pickupStreetName}</p>
                     ${dropoffStreetName ? `<p style="font-size: 12px; color: #666; margin: 4px 0;"><strong>Dropoff:</strong> ${dropoffStreetName}</p>` : ''}
-                    <p style="font-size: 12px; color: #666; margin: 4px 0;"><strong>Seats:</strong> ${rideRequest.numberOfSeats}</p>
-                    <p style="font-size: 12px; color: #666; margin: 4px 0;"><strong>Max:</strong> $${rideRequest.maximumAmount?.toFixed(2)} CAD</p>
+                    <p style="font-size: 12px; color: #666; margin: 4px 0;"><strong>Seats:</strong> ${rideRequest.totalSeats}</p>
+                    <p style="font-size: 12px; color: #666; margin: 4px 0;"><strong>Max:</strong> $${rideRequest.maximumAmount?.toFixed(2) || '0.00'} CAD</p>
                     <p style="font-size: 10px; color: #999; margin: 8px 0 0 0;">Click marker to see route</p>
                     ${isOwner ? `
                       <button 
@@ -843,7 +1094,7 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
           });
 
           markersRef.current.push({
-            rideRequest,
+            ride: rideRequest,
             actualPickupLocation,
             displayPickupLocation,
             actualDropoffLocation,
@@ -896,27 +1147,810 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
     };
   }, [rideRequests, isMapLoaded]);
 
+  // Update offer markers when ride offers change and tab is offers
+  useEffect(() => {
+    if (!isMapLoaded || !mapRef.current || tab !== 'offers') {
+      // Clear offer markers when switching away from offers tab
+      offerMarkersRef.current.forEach((marker) => {
+        try {
+          if (marker) marker.remove();
+        } catch (e) {
+          // Ignore errors
+        }
+      });
+      offerMarkersRef.current = [];
+      return;
+    }
+
+    const map = mapRef.current;
+    const maplibregl = getMapLibreInstance();
+    if (!maplibregl) {
+      return;
+    }
+
+    // Remove existing offer markers and route layers
+    offerMarkersRef.current.forEach((marker) => {
+      try {
+        if (marker) marker.remove();
+      } catch (e) {
+        // Ignore errors
+      }
+    });
+    offerMarkersRef.current = [];
+    
+    // Clean up any existing offer route layers
+    rideOffers.forEach((offer) => {
+      if (!offer.id) return;
+      const routeId = `offer-route-${offer.id}`;
+      const layerId = `offer-route-layer-${offer.id}`;
+      try {
+        if (map.getLayer(layerId)) map.removeLayer(layerId);
+        if (map.getSource(routeId)) map.removeSource(routeId);
+      } catch (e) { /* ignore */ }
+    });
+
+    // Also clear request markers when viewing offers
+    markersRef.current.forEach(({ marker, dropoffMarker, routeSourceId, routeLayerId }) => {
+      try {
+        if (marker) marker.remove();
+        if (dropoffMarker) dropoffMarker.remove();
+        if (routeLayerId && map.getLayer(routeLayerId)) {
+          map.removeLayer(routeLayerId);
+        }
+        if (routeSourceId && map.getSource(routeSourceId)) {
+          map.removeSource(routeSourceId);
+        }
+      } catch (e) {
+        // Ignore errors
+      }
+    });
+    markersRef.current = [];
+
+    if (rideOffers.length === 0) {
+      return;
+    }
+
+    // Debounce marker updates
+    const updateTimeout = setTimeout(() => {
+      if (!isMountedRef.current || !mapRef.current || mapRef.current !== map) {
+        return;
+      }
+
+      const allLocations: Location[] = [];
+
+      // Track if we need to focus on a highlighted offer
+      type HighlightLocation = { origin: Location; destination: Location | null };
+      let highlightedOfferLocation: HighlightLocation | null = null;
+
+      rideOffers.forEach((offer) => {
+        if (!offer.originLatitude || !offer.originLongitude) {
+          return;
+        }
+
+        const originLocation: Location = {
+          latitude: offer.originLatitude,
+          longitude: offer.originLongitude,
+          address: offer.originAddress || offer.originRegion || undefined,
+        };
+
+        allLocations.push(originLocation);
+
+        // Also add destination for bounds calculation
+        let destinationLocation: Location | null = null;
+        if (offer.destinationLatitude && offer.destinationLongitude) {
+          destinationLocation = {
+            latitude: offer.destinationLatitude,
+            longitude: offer.destinationLongitude,
+            address: offer.destinationAddress || offer.destinationRegion || undefined,
+          };
+          allLocations.push(destinationLocation);
+        }
+
+        // Track highlighted offer for focusing
+        if (highlightedOfferId && offer.id === highlightedOfferId) {
+          highlightedOfferLocation = { origin: originLocation, destination: destinationLocation };
+        }
+
+        const isOwner = userProfileId && offer.hostId === userProfileId;
+        const seatsLeft = (offer.totalSeats ?? 0) - (offer.seatsBooked ?? 0);
+        const hasJoinCode = Boolean(offer.joinCode?.trim());
+        const isHighlighted = highlightedOfferId === offer.id;
+
+        try {
+          // Create marker at origin - larger and highlighted if selected
+          const el = document.createElement('div');
+          el.className = 'ride-offer-marker';
+          el.innerHTML = `
+            <div style="
+              width: ${isHighlighted ? '40px' : '32px'};
+              height: ${isHighlighted ? '40px' : '32px'};
+              background-color: #10b981;
+              border: ${isHighlighted ? '4px solid #059669' : '3px solid white'};
+              border-radius: 50%;
+              box-shadow: ${isHighlighted ? '0 4px 12px rgba(16,185,129,0.5)' : '0 2px 4px rgba(0,0,0,0.3)'};
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              color: white;
+              font-weight: bold;
+              font-size: ${isHighlighted ? '20px' : '18px'};
+              cursor: pointer;
+              transition: all 0.2s ease;
+            ">O</div>
+          `;
+
+          const marker = new maplibregl.Marker({ element: el })
+            .setLngLat(locationToCoordinates(originLocation))
+            .setPopup(
+              new maplibregl.Popup({ offset: 25, closeOnClick: false })
+                .setHTML(`
+                  <div style="text-align: left; min-width: 220px;">
+                    <p style="font-weight: 600; color: #10b981; margin: 0 0 8px 0;">Ride Offer ${isOwner ? '<span style="background:#d1fae5;color:#065f46;padding:2px 6px;border-radius:4px;font-size:11px;margin-left:4px;">Your offer</span>' : ''}</p>
+                    <p style="font-size: 12px; color: #666; margin: 4px 0;"><strong>From:</strong> ${offer.originAddress || offer.originRegion || 'Origin'}</p>
+                    <p style="font-size: 12px; color: #666; margin: 4px 0;"><strong>To:</strong> ${offer.destinationAddress || offer.destinationRegion || 'Destination'}</p>
+                    <p style="font-size: 12px; color: #666; margin: 4px 0;"><strong>When:</strong> ${formatOfferDeparture(offer.departureTime)}</p>
+                    <p style="font-size: 12px; color: #666; margin: 4px 0;"><strong>Price:</strong> $${offer.pricePerSeat ?? 0} CAD</p>
+                    <p style="font-size: 12px; color: #666; margin: 4px 0;"><strong>Seats:</strong> ${seatsLeft} available</p>
+                    ${hasJoinCode ? `
+                      <a 
+                        href="/join/${offer.joinCode}" 
+                        style="
+                          display: block;
+                          width: 100%;
+                          margin-top: 12px;
+                          padding: 8px 16px;
+                          background-color: ${isOwner ? '#d1fae5' : '#10b981'};
+                          color: ${isOwner ? '#065f46' : 'white'};
+                          border: none;
+                          border-radius: 6px;
+                          font-weight: 600;
+                          font-size: 14px;
+                          text-align: center;
+                          text-decoration: none;
+                          cursor: pointer;
+                        "
+                      >
+                        ${isOwner ? 'View & share' : 'Request to join'}
+                      </a>
+                    ` : ''}
+                  </div>
+                `)
+            )
+            .addTo(map);
+
+          offerMarkersRef.current.push(marker);
+
+          // If this offer is highlighted, add destination marker and route line
+          if (isHighlighted && destinationLocation) {
+            // Create destination marker
+            const destEl = document.createElement('div');
+            destEl.className = 'ride-offer-destination-marker';
+            destEl.innerHTML = `
+              <div style="
+                width: 36px;
+                height: 36px;
+                background-color: #ef4444;
+                border: 4px solid #dc2626;
+                border-radius: 50%;
+                box-shadow: 0 4px 12px rgba(239,68,68,0.5);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: white;
+                font-weight: bold;
+                font-size: 16px;
+              ">D</div>
+            `;
+
+            const destMarker = new maplibregl.Marker({ element: destEl })
+              .setLngLat(locationToCoordinates(destinationLocation))
+              .setPopup(
+                new maplibregl.Popup({ offset: 25 })
+                  .setHTML(`
+                    <div style="text-align: left; min-width: 180px;">
+                      <p style="font-weight: 600; color: #ef4444; margin: 0 0 4px 0;">Destination</p>
+                      <p style="font-size: 12px; color: #666; margin: 0;">${destinationLocation.address || 'Destination'}</p>
+                    </div>
+                  `)
+              )
+              .addTo(map);
+
+            offerMarkersRef.current.push(destMarker);
+
+            // Fetch and display route between origin and destination
+            const pickupCoords = locationToCoordinates(originLocation);
+            const dropoffCoords = locationToCoordinates(destinationLocation);
+            const coordinates = `${pickupCoords[0]},${pickupCoords[1]};${dropoffCoords[0]},${dropoffCoords[1]}`;
+            const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=full&geometries=geojson`;
+
+            fetch(osrmUrl, {
+              headers: { 'User-Agent': 'RideShare.Click/1.0' },
+            })
+              .then((res) => res.ok ? res.json() : null)
+              .then((data) => {
+                if (!data || data.code !== 'Ok' || !data.routes?.[0]?.geometry) return;
+                if (!isMountedRef.current || !mapRef.current) return;
+
+                const routeId = `offer-route-${offer.id}`;
+                const layerId = `offer-route-layer-${offer.id}`;
+
+                // Remove existing route if any
+                try {
+                  if (map.getLayer(layerId)) map.removeLayer(layerId);
+                  if (map.getSource(routeId)) map.removeSource(routeId);
+                } catch (e) { /* ignore */ }
+
+                // Add route
+                try {
+                  map.addSource(routeId, {
+                    type: 'geojson',
+                    data: data.routes[0].geometry,
+                  });
+                  map.addLayer({
+                    id: layerId,
+                    type: 'line',
+                    source: routeId,
+                    layout: { 'line-join': 'round', 'line-cap': 'round' },
+                    paint: {
+                      'line-color': '#10b981',
+                      'line-width': 5,
+                      'line-opacity': 0.8,
+                    },
+                  });
+                } catch (e) {
+                  if (import.meta.env.DEV) console.debug('Error adding offer route:', e);
+                }
+              })
+              .catch(() => { /* ignore route errors */ });
+          }
+        } catch (error) {
+          if (import.meta.env.DEV) {
+            console.debug('Error adding offer marker:', error);
+          }
+        }
+      });
+
+      // If we have a highlighted offer, fit bounds to show just that route
+      // Otherwise show all offer markers
+      const highlighted = highlightedOfferLocation as HighlightLocation | null;
+      if (highlighted) {
+        const focusLocations = [highlighted.origin];
+        if (highlighted.destination) {
+          focusLocations.push(highlighted.destination);
+        }
+        const bounds = calculateBounds(focusLocations);
+        if (bounds) {
+          try {
+            const [[minLng, minLat], [maxLng, maxLat]] = bounds;
+            const constrainedMinLng = Math.max(MANITOBA_BOUNDS[0], minLng);
+            const constrainedMinLat = Math.max(MANITOBA_BOUNDS[1], minLat);
+            const constrainedMaxLng = Math.min(MANITOBA_BOUNDS[2], maxLng);
+            const constrainedMaxLat = Math.min(MANITOBA_BOUNDS[3], maxLat);
+            
+            if (constrainedMinLng < constrainedMaxLng && constrainedMinLat < constrainedMaxLat) {
+              map.fitBounds(
+                [[constrainedMinLng, constrainedMinLat], [constrainedMaxLng, constrainedMaxLat]],
+                { padding: 80, animate: true, duration: 500 }
+              );
+            }
+          } catch (error) {
+            if (import.meta.env.DEV) {
+              console.debug('Error fitting map bounds:', error);
+            }
+          }
+        }
+        // Clear the highlight after focusing (so future map views show all)
+        setTimeout(() => {
+          if (isMountedRef.current) {
+            setHighlightedOfferId(null);
+          }
+        }, 2000);
+      } else if (allLocations.length > 0) {
+        const bounds = calculateBounds(allLocations);
+        if (bounds) {
+          try {
+            const [[minLng, minLat], [maxLng, maxLat]] = bounds;
+            const constrainedMinLng = Math.max(MANITOBA_BOUNDS[0], minLng);
+            const constrainedMinLat = Math.max(MANITOBA_BOUNDS[1], minLat);
+            const constrainedMaxLng = Math.min(MANITOBA_BOUNDS[2], maxLng);
+            const constrainedMaxLat = Math.min(MANITOBA_BOUNDS[3], maxLat);
+            
+            if (constrainedMinLng < constrainedMaxLng && constrainedMinLat < constrainedMaxLat) {
+              map.fitBounds(
+                [[constrainedMinLng, constrainedMinLat], [constrainedMaxLng, constrainedMaxLat]],
+                { padding: 50, animate: false }
+              );
+            }
+          } catch (error) {
+            if (import.meta.env.DEV) {
+              console.debug('Error fitting map bounds:', error);
+            }
+          }
+        }
+      }
+    }, 150);
+
+    return () => {
+      clearTimeout(updateTimeout);
+    };
+  }, [rideOffers, isMapLoaded, tab, userProfileId, highlightedOfferId]);
+
+  // Clear request markers when switching to offers tab
+  useEffect(() => {
+    if (tab === 'offers' && mapRef.current) {
+      const map = mapRef.current;
+      markersRef.current.forEach(({ marker, dropoffMarker, routeSourceId, routeLayerId }) => {
+        try {
+          if (marker) marker.remove();
+          if (dropoffMarker) dropoffMarker.remove();
+          if (routeLayerId && map.getLayer(routeLayerId)) {
+            map.removeLayer(routeLayerId);
+          }
+          if (routeSourceId && map.getSource(routeSourceId)) {
+            map.removeSource(routeSourceId);
+          }
+        } catch (e) {
+          // Ignore errors
+        }
+      });
+      markersRef.current = [];
+      selectedRequestIdRef.current = null;
+    }
+  }, [tab]);
+
+  // Clear offer markers when switching to requests tab
+  useEffect(() => {
+    if (tab === 'requests') {
+      const map = mapRef.current;
+      offerMarkersRef.current.forEach((marker) => {
+        try {
+          if (marker) marker.remove();
+        } catch (e) {
+          // Ignore errors
+        }
+      });
+      offerMarkersRef.current = [];
+      
+      // Clean up any offer route layers
+      if (map) {
+        rideOffers.forEach((offer) => {
+          if (!offer.id) return;
+          const routeId = `offer-route-${offer.id}`;
+          const layerId = `offer-route-layer-${offer.id}`;
+          try {
+            if (map.getLayer(layerId)) map.removeLayer(layerId);
+            if (map.getSource(routeId)) map.removeSource(routeId);
+          } catch (e) { /* ignore */ }
+        });
+      }
+      
+      // Clear highlighted offer
+      setHighlightedOfferId(null);
+    }
+  }, [tab, rideOffers]);
+
+  // Resize map when switching to map view (container may have been hidden)
+  useEffect(() => {
+    if (viewMode !== 'map' || !mapRef.current) return;
+    // Use multiple resize attempts to ensure the container has proper dimensions
+    const resizeMap = () => {
+      if (mapRef.current && isMountedRef.current) {
+        try {
+          mapRef.current.resize();
+        } catch (e) {
+          // Ignore errors
+        }
+      }
+    };
+    resizeMap();
+    const timer1 = setTimeout(resizeMap, 50);
+    const timer2 = setTimeout(resizeMap, 150);
+    const timer3 = setTimeout(resizeMap, 300);
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      clearTimeout(timer3);
+    };
+  }, [viewMode]);
+
   return (
-    <div className="h-screen flex flex-col">
+    <main id="main-content" className="h-screen flex flex-col">
       {/* Header */}
       <header className="bg-white shadow-sm z-10">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center gap-4">
-          <button
-            onClick={() => setCurrentView('home')}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            aria-label="Back to home"
-          >
-            <ArrowLeft className="w-6 h-6" />
-          </button>
-          <h1 className="text-xl font-bold text-gray-900">Find a Ride</h1>
-          <div className="ml-auto flex items-center gap-2 text-sm text-gray-600">
-            <MapPin className="w-4 h-4" />
-            <span>{rideRequests.length} request{rideRequests.length !== 1 ? 's' : ''} available</span>
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3 flex-wrap">
+          <div className="flex rounded-lg border border-gray-200 p-0.5 bg-gray-100">
+            <button
+              type="button"
+              onClick={() => setTab('requests')}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${tab === 'requests' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
+              aria-pressed={tab === 'requests'}
+            >
+              Requests
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab('offers')}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${tab === 'offers' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
+              aria-pressed={tab === 'offers'}
+            >
+              Offers
+            </button>
+          </div>
+          <div className="flex rounded-lg border border-gray-200 p-0.5 bg-gray-100">
+            <button
+              type="button"
+              onClick={() => setViewMode('list')}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${viewMode === 'list' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
+              aria-pressed={viewMode === 'list'}
+            >
+              List
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('map')}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${viewMode === 'map' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
+              aria-pressed={viewMode === 'map'}
+            >
+              Map
+            </button>
+          </div>
+          <div className="ml-auto text-sm text-gray-600">
+            {tab === 'requests' ? (
+              <span>{rideRequests.length} request{rideRequests.length !== 1 ? 's' : ''} available</span>
+            ) : (
+              <span>{rideOffers.length} offer{rideOffers.length !== 1 ? 's' : ''} available</span>
+            )}
           </div>
         </div>
       </header>
 
-      {/* Map Container */}
+      {/* Ride offers list (when tab is offers and viewMode is list) */}
+      {tab === 'offers' && viewMode === 'list' && (
+        <div className="flex-1 overflow-y-auto bg-gray-50 p-4">
+          {user && (
+            <div className="max-w-3xl mx-auto mb-4">
+              {!showNotifyForm ? (
+                <button
+                  type="button"
+                  onClick={() => setShowNotifyForm(true)}
+                  className="text-sm text-primary-600 hover:underline"
+                >
+                  Notify me when a ride matches my route
+                </button>
+              ) : (
+                <div className="bg-white rounded-lg border border-gray-200 p-4">
+                  <h3 className="font-medium text-gray-900 mb-2">Notify me when a ride matches</h3>
+                  <div className="flex flex-col sm:flex-row gap-2 mb-2">
+                    <input
+                      type="text"
+                      placeholder="From (e.g. Winnipeg)"
+                      value={notifyOrigin}
+                      onChange={(e) => setNotifyOrigin(e.target.value)}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                    <input
+                      type="text"
+                      placeholder="To (e.g. Brandon)"
+                      value={notifyDest}
+                      onChange={(e) => setNotifyDest(e.target.value)}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!user) return;
+                        setSavingAlert(true);
+                        try {
+                          const profileRes = (await client.models.UserProfile.list({
+                            filter: { userId: { eq: user.userId } },
+                            limit: 1,
+                          })) as { data?: { id: string }[] };
+                          const profile = profileRes.data?.[0];
+                          if (!profile?.id) {
+                            toast.error('Profile not found.');
+                            setSavingAlert(false);
+                            return;
+                          }
+                          const model = client.models.RideAlert;
+                          if (!model) {
+                            toast.error('Alerts not available yet.');
+                            setSavingAlert(false);
+                            return;
+                          }
+                          const alertPayload = {
+                            userProfileId: profile.id,
+                            originRegion: notifyOrigin || undefined,
+                            destinationRegion: notifyDest || undefined,
+                            notify: true,
+                            createdAt: new Date().toISOString(),
+                          };
+                          // @ts-expect-error TS2590 - Amplify create return type is too complex
+                          await model.create(alertPayload);
+                          toast.success('You’ll be notified when a matching ride is posted.');
+                          setShowNotifyForm(false);
+                          setNotifyOrigin('');
+                          setNotifyDest('');
+                        } catch (e) {
+                          if (import.meta.env.DEV) console.error('Create alert:', e);
+                          toast.error('Failed to save alert.');
+                        } finally {
+                          setSavingAlert(false);
+                        }
+                      }}
+                      disabled={savingAlert}
+                      className="px-3 py-1.5 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 disabled:opacity-50"
+                    >
+                      {savingAlert ? 'Saving...' : 'Save'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setShowNotifyForm(false); setNotifyOrigin(''); setNotifyDest(''); }}
+                      className="px-3 py-1.5 border border-gray-300 text-sm rounded-lg hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {loadingOffers ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 text-primary-600 animate-spin" />
+            </div>
+          ) : rideOffers.length === 0 ? (
+            <div className="max-w-md mx-auto text-center py-12 bg-white rounded-lg shadow p-6">
+              <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <h2 className="text-xl font-semibold text-gray-700 mb-2">No ride offers yet</h2>
+              <p className="text-gray-600 mb-6">Be the first to offer a ride and share the link with others.</p>
+              <button
+                onClick={() => user ? setCurrentView('offerRide') : setCurrentView('account')}
+                className="px-6 py-3 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
+              >
+                {user ? 'Offer a ride' : 'Sign in to offer a ride'}
+              </button>
+            </div>
+          ) : (
+            <ul className="space-y-2 max-w-3xl mx-auto" role="list">
+              {rideOffers.map((offer) => {
+                const seatsLeft = (offer.totalSeats ?? 0) - (offer.seatsBooked ?? 0);
+                const hasJoinCode = Boolean(offer.joinCode?.trim());
+                const isOwner = userProfileId && offer.hostId === userProfileId;
+                const hasCoordinates = offer.originLatitude && offer.originLongitude && 
+                                       offer.destinationLatitude && offer.destinationLongitude;
+                
+                return (
+                  <li key={offer.id} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                    <div className="flex">
+                      {/* Map Preview Thumbnail */}
+                      <button
+                        type="button"
+                        onClick={() => offer.id && handleViewOnMap(offer.id)}
+                        className="w-20 sm:w-24 h-16 sm:h-20 flex-shrink-0 bg-gray-50 relative group hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-inset rounded-l-lg overflow-hidden"
+                        aria-label={`View route on map: ${offer.originAddress || 'Origin'} to ${offer.destinationAddress || 'Destination'}`}
+                      >
+                        {hasCoordinates ? (
+                          <MapPreviewPlaceholder
+                            originLat={offer.originLatitude!}
+                            originLng={offer.originLongitude!}
+                            destLat={offer.destinationLatitude!}
+                            destLng={offer.destinationLongitude!}
+                          />
+                        ) : (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400">
+                            <MapIcon className="w-6 h-6" />
+                          </div>
+                        )}
+                        {/* Hover overlay */}
+                        <div className="absolute inset-0 bg-primary-600 bg-opacity-0 group-hover:bg-opacity-30 transition-all flex items-center justify-center">
+                          <div className="bg-white bg-opacity-90 rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-md">
+                            <MapIcon className="w-4 h-4 text-primary-600" />
+                          </div>
+                        </div>
+                      </button>
+
+                      {/* Ride Info - Compact */}
+                      <div className="flex-1 p-3 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            {/* Route with truncation */}
+                            <div className="flex items-center gap-1 text-sm font-medium text-gray-900">
+                              <span className="truncate" title={offer.originAddress || offer.originRegion || 'Origin'}>
+                                {truncateAddress(offer.originAddress || offer.originRegion, 20)}
+                              </span>
+                              <span className="text-gray-400 flex-shrink-0">→</span>
+                              <span className="truncate" title={offer.destinationAddress || offer.destinationRegion || 'Destination'}>
+                                {truncateAddress(offer.destinationAddress || offer.destinationRegion, 20)}
+                              </span>
+                              {isOwner && (
+                                <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary-100 text-primary-700 flex-shrink-0">
+                                  Yours
+                                </span>
+                              )}
+                            </div>
+                            
+                            {/* Key details on one line */}
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-gray-500">
+                              <span className="flex items-center gap-0.5">
+                                <Clock className="w-3.5 h-3.5" />
+                                {formatOfferDeparture(offer.departureTime)}
+                              </span>
+                              <span className="flex items-center gap-0.5 font-medium text-gray-700">
+                                <DollarSign className="w-3.5 h-3.5" />
+                                {offer.pricePerSeat ?? 0}
+                              </span>
+                              <span className="flex items-center gap-0.5">
+                                <Users className="w-3.5 h-3.5" />
+                                {seatsLeft} seat{seatsLeft !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Actions - Compact */}
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            {isOwner ? (
+                              <>
+                                {hasJoinCode && (
+                                  <Link
+                                    to={`/join/${offer.joinCode}`}
+                                    className="px-2.5 py-1.5 bg-primary-50 text-primary-700 text-xs font-medium rounded-md hover:bg-primary-100 transition-colors"
+                                  >
+                                    Share
+                                  </Link>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => offer.id && handleDeleteOffer(offer.id)}
+                                  disabled={deletingOfferId === offer.id}
+                                  className="p-1.5 text-red-500 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50"
+                                  aria-label="Delete this ride offer"
+                                >
+                                  {deletingOfferId === offer.id ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="w-4 h-4" />
+                                  )}
+                                </button>
+                              </>
+                            ) : hasJoinCode ? (
+                              <Link
+                                to={`/join/${offer.joinCode}`}
+                                className="px-3 py-1.5 bg-primary-600 text-white text-xs font-medium rounded-md hover:bg-primary-700 transition-colors"
+                              >
+                                Join
+                              </Link>
+                            ) : (
+                              <span className="px-2 py-1 bg-gray-100 text-gray-400 text-xs rounded-md">
+                                N/A
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/* Requests List View (when tab is requests and viewMode is list) */}
+      {tab === 'requests' && viewMode === 'list' && (
+        <div className="flex-1 overflow-y-auto bg-gray-50 p-4">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 text-primary-600 animate-spin" />
+            </div>
+          ) : error ? (
+            <div className="max-w-md mx-auto text-center py-12 bg-white rounded-lg shadow p-6">
+              <p className="text-red-600 font-semibold mb-2">Error</p>
+              <p className="text-gray-700 text-sm mb-4">{error}</p>
+              <button
+                onClick={() => window.location.reload()}
+                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+              >
+                Reload Page
+              </button>
+            </div>
+          ) : rideRequests.length === 0 ? (
+            <div className="max-w-md mx-auto text-center py-12 bg-white rounded-lg shadow p-6">
+              <MapPin className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <h2 className="text-xl font-semibold text-gray-700 mb-2">No ride requests yet</h2>
+              <p className="text-gray-600 mb-6">
+                Be the first to request a ride, or offer a seat to others.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <button
+                  onClick={() => setCurrentView('bookRide')}
+                  className="px-6 py-3 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
+                >
+                  Request a ride
+                </button>
+                <button
+                  onClick={() => user ? setCurrentView('offerRide') : setCurrentView('account')}
+                  className="px-6 py-3 bg-white border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+                >
+                  {user ? 'Offer a ride' : 'Sign in to offer a ride'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <ul className="space-y-3 max-w-3xl mx-auto" role="list">
+              {rideRequests.map((request) => {
+                const isOwner = userProfileId && request.hostId === userProfileId;
+                return (
+                  <li key={request.id} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                    <div className="p-4">
+                      <div className="flex items-start justify-between gap-3 mb-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <RideTypeBadge rideType={request.rideType} size="sm" />
+                            <RideStatusBadge status={request.status} size="sm" />
+                            <p className="font-medium text-gray-900 truncate">
+                              {extractStreetName(request.originAddress)} → {extractStreetName(request.destinationAddress)}
+                            </p>
+                            {isOwner && (
+                              <span className="px-2 py-0.5 rounded text-xs font-medium bg-primary-100 text-primary-700 shrink-0">
+                                Your request
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-3 mt-1 text-sm text-gray-600">
+                            <span className="flex items-center gap-1">
+                              <Users className="w-4 h-4" />
+                              {request.totalSeats} seat{request.totalSeats !== 1 ? 's' : ''}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <DollarSign className="w-4 h-4" />
+                              Max ${request.maximumAmount?.toFixed(2) || '0.00'} CAD
+                            </span>
+                            {request.departureTime && (
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-4 h-4" />
+                                {formatRelativeDate(request.departureTime)}
+                              </span>
+                            )}
+                          </div>
+                          {request.notes && (
+                            <p className="text-sm text-gray-500 mt-2 italic">{request.notes}</p>
+                          )}
+                        </div>
+                        {isOwner && (
+                          <button
+                            type="button"
+                            onClick={() => request.id && handleCancelRide(request.id, mapRef.current)}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center shrink-0"
+                            aria-label="Cancel this ride request"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        )}
+                      </div>
+                      {!isOwner && user && (
+                        <div className="flex items-center gap-2 mt-3">
+                          <button
+                            onClick={() => setCurrentView('offerRide')}
+                            className="inline-flex items-center px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors"
+                          >
+                            Offer a ride
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            )}
+        </div>
+      )}
+
+      {/* Map Container (when viewMode is map) */}
+      {viewMode === 'map' && (
       <div className="flex-1 relative bg-white min-h-[600px] overflow-hidden" style={{ position: 'relative', isolation: 'isolate' }}>
         {/* Loading State */}
         {((!isMapLoaded || isScriptLoading) && !mapError) && (
@@ -944,8 +1978,8 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
           </div>
         )}
 
-        {/* Data Loading State */}
-        {loading && (
+        {/* Data Loading State - Requests */}
+        {tab === 'requests' && loading && (
           <div className="absolute inset-0 bg-gray-100 bg-opacity-50 flex items-center justify-center z-30 pointer-events-none">
             <div className="text-center bg-white rounded-lg shadow-lg p-6">
               <Loader2 className="w-8 h-8 text-primary-600 animate-spin mx-auto mb-2" />
@@ -954,20 +1988,57 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
           </div>
         )}
 
-        {/* Empty State */}
-        {!loading && !error && rideRequests.length === 0 && (
+        {/* Data Loading State - Offers */}
+        {tab === 'offers' && loadingOffers && (
+          <div className="absolute inset-0 bg-gray-100 bg-opacity-50 flex items-center justify-center z-30 pointer-events-none">
+            <div className="text-center bg-white rounded-lg shadow-lg p-6">
+              <Loader2 className="w-8 h-8 text-primary-600 animate-spin mx-auto mb-2" />
+              <p className="text-gray-600">Loading ride offers...</p>
+            </div>
+          </div>
+        )}
+
+        {/* Empty State - Requests */}
+        {tab === 'requests' && !loading && !error && rideRequests.length === 0 && viewMode === 'map' && (
           <div className="absolute inset-0 bg-gray-100 flex items-center justify-center z-20">
             <div className="text-center p-6 bg-white rounded-lg shadow-lg max-w-md">
               <MapPin className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-gray-700 mb-2">No Ride Requests</h3>
-              <p className="text-gray-600 mb-4">
-                There are no pending ride requests at the moment.
+              <h2 className="text-xl font-semibold text-gray-700 mb-2">No ride requests yet</h2>
+              <p className="text-gray-600 mb-6">
+                Be the first to request a ride, or offer a seat to others.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <button
+                  onClick={() => setCurrentView('bookRide')}
+                  className="px-6 py-3 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
+                >
+                  Request a ride
+                </button>
+                <button
+                  onClick={() => user ? setCurrentView('offerRide') : setCurrentView('account')}
+                  className="px-6 py-3 bg-white border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+                >
+                  {user ? 'Offer a ride' : 'Sign in to offer a ride'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Empty State - Offers */}
+        {tab === 'offers' && !loadingOffers && rideOffers.length === 0 && viewMode === 'map' && (
+          <div className="absolute inset-0 bg-gray-100 flex items-center justify-center z-20">
+            <div className="text-center p-6 bg-white rounded-lg shadow-lg max-w-md">
+              <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <h2 className="text-xl font-semibold text-gray-700 mb-2">No ride offers yet</h2>
+              <p className="text-gray-600 mb-6">
+                Be the first to offer a ride and share the link with others.
               </p>
               <button
-                onClick={() => setCurrentView('bookRide')}
+                onClick={() => user ? setCurrentView('offerRide') : setCurrentView('account')}
                 className="px-6 py-3 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
               >
-                Create a Ride Request
+                {user ? 'Offer a ride' : 'Sign in to offer a ride'}
               </button>
             </div>
           </div>
@@ -989,6 +2060,7 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
           }}
         />
       </div>
-    </div>
+      )}
+    </main>
   );
 }

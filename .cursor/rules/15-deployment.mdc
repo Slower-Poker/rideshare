@@ -1,0 +1,292 @@
+---
+title: Deployment
+description: Git workflow, deployment process, and optimization
+priority: 78
+---
+
+# Deployment
+
+## Git Workflow
+
+```bash
+# Feature branch (from your main/dev branch)
+git checkout dev
+git pull origin dev
+git checkout -b feature/your-feature-name
+
+# Make changes
+
+# ⚠️ CRITICAL: Check TypeScript before committing
+npm run type-check
+
+# If no errors, commit
+git add .
+git commit -m "feat: Add your feature"
+
+# Push and open PR
+git push origin feature/your-feature-name
+
+# For production: use project's deployment process (e.g. PR to main → Amplify)
+```
+
+### Pre-Commit Check
+
+**ALWAYS run TypeScript check before committing:**
+
+```bash
+npx tsc --noEmit
+```
+
+This command:
+- Runs TypeScript compiler in check-only mode (no output files)
+- Shows all type errors across the project
+- Must pass with 0 errors before committing
+- Catches type issues before they reach production
+
+## Commit Message Format
+
+Follow conventional commits:
+
+```
+feat: Add ride search filters
+fix: Resolve map marker bug
+refactor: Extract booking flow to utility
+style: Update button styling for accessibility
+docs: Add deployment instructions
+test: Add E2E tests for booking flow
+chore: Update dependencies
+```
+
+**Types:**
+- `feat`: New feature
+- `fix`: Bug fix
+- `refactor`: Code restructuring
+- `style`: UI/styling changes
+- `docs`: Documentation
+- `test`: Testing
+- `chore`: Maintenance
+
+## Amplify Deployment
+
+### Sandbox (Development)
+
+```bash
+# Verify AWS identity first
+aws sts get-caller-identity --profile PowerUserAccess-058083005833
+
+# Start sandbox
+npm run amplify:sandbox -- --profile PowerUserAccess-058083005833
+
+# Clean up sandbox when done
+npm run amplify:sandbox:delete -- --profile PowerUserAccess-058083005833
+```
+
+**Sandbox Features:**
+- Isolated development environment
+- Real AWS resources (DynamoDB, Cognito, etc.)
+- Hot-reload backend changes
+- Safe to experiment
+
+### Production
+
+**Branch Strategy:**
+- `development` - Integration branch for testing features
+- `main` - Production branch (auto-deploys to AWS Amplify)
+
+**Deployment Flow:**
+1. Feature branches merge into `development`
+2. Test on development environment
+3. When ready for release, PR from `development` → `main`
+4. Main branch auto-deploys to production
+
+**Build Configuration:**
+- Build configuration in `amplify.yml`
+- Build logs visible in Amplify Console
+
+**Manual Deploy Trigger:**
+```bash
+# Trigger deploy without code changes
+npm run amplify:deploy  # If script exists
+
+# Or push empty commit to main (for production)
+git checkout main
+git commit --allow-empty -m "chore: Trigger deploy"
+git push origin main
+```
+
+## Pre-Deployment Checklist
+
+**See `plans/PRE_DEPLOYMENT_CHECKLIST.md` for complete checklist**
+
+Quick checklist:
+- [ ] **TypeScript check passes** (`npm run type-check`)
+- [ ] Tests pass (`npm run test`, `npm run test:e2e`)
+- [ ] Build succeeds locally (`npm run build`)
+- [ ] No console errors in production build
+- [ ] Secrets configured in Amplify Console (e.g. SIWA_* for Apple)
+- [ ] OAuth callback URLs include deployment URL and localhost
+- [ ] Terms version updated (if terms changed)
+- [ ] **Schema changes**: redeploy backend after data/resource.ts changes
+
+## Build Configuration
+
+### Vite Configuration
+
+Located in `vite.config.ts`:
+
+```typescript
+build: {
+  rollupOptions: {
+    output: {
+      manualChunks: {
+        'react-vendor': ['react', 'react-dom'],
+        'amplify-vendor': ['aws-amplify', '@aws-amplify/ui-react'],
+        'lucide-vendor': ['lucide-react'],
+      }
+    }
+  }
+}
+```
+
+### Memory Optimization
+
+In `package.json`:
+```json
+"build": "NODE_OPTIONS=--max-old-space-size=4096 vite build"
+```
+
+## Performance Optimization
+
+### Current Optimizations
+
+- ✅ Lazy load components with `React.lazy()`
+- ✅ Manual chunk splitting (react-vendor, amplify-vendor, lucide-vendor)
+- ✅ Memory optimization: 4GB heap size
+- ✅ Memoize expensive calculations with `useMemo`
+- ✅ Prevent re-renders with `useCallback`
+- ✅ Code splitting by route (lazy loaded views)
+
+### Build Output
+
+After `npm run build`, check:
+- Total bundle size < 1MB (gzipped)
+- Largest chunk < 500KB
+- No warnings about large chunks
+
+## Deployment Environments
+
+| Environment | URL | Branch | Purpose |
+|-------------|-----|--------|---------|
+| **Production** | https://rideshare.click/ (or your domain) | `main` | Live app |
+| **Development** | TBD (configure in Amplify) | `dev` | Staging/testing |
+| **Local Dev** | http://localhost:5173/ | - | Local development |
+| **Local Preview** | http://localhost:4173/ | - | Production build preview |
+
+## Secrets Management
+
+### Production Secrets
+
+Stored in **Amplify Console**:
+- Navigate to: Amplify Console → [your app] → Hosting → Build settings → Environment variables → Secrets
+- Required secrets (e.g. for Apple Sign In):
+  - `SIWA_CLIENT_ID`
+  - `SIWA_KEY_ID`
+  - `SIWA_PRIVATE_KEY`
+  - `SIWA_TEAM_ID`
+
+### Sandbox Secrets
+
+Stored in **AWS Parameter Store**:
+```bash
+npx ampx sandbox secret set SIWA_CLIENT_ID --profile PowerUserAccess-058083005833
+npx ampx sandbox secret set SIWA_KEY_ID --profile PowerUserAccess-058083005833
+npx ampx sandbox secret set SIWA_PRIVATE_KEY --profile PowerUserAccess-058083005833
+npx ampx sandbox secret set SIWA_TEAM_ID --profile PowerUserAccess-058083005833
+```
+
+## Post-Deployment Verification
+
+After deployment:
+
+1. **Verify Site Loads**
+   - Visit production URL (e.g. https://rideshare.click/)
+   - No console errors
+   - UI renders correctly
+
+2. **Test Authentication**
+   - Google Sign In works
+   - Apple Sign In works (especially second login)
+
+3. **Test Critical Flows**
+   - Find rides, book a ride
+   - Offer a ride
+   - Ride Planner (if used), pools, connections
+
+4. **Check Apple Sign In Config**
+   ```bash
+   aws cognito-idp describe-identity-provider \
+     --user-pool-id ca-central-1_cJnPiAtry \
+     --provider-name SignInWithApple \
+     --profile PowerUserAccess-058083005833 \
+     --region ca-central-1 \
+     --query 'IdentityProvider.ProviderDetails.authorize_scopes'
+   ```
+   Expected: `"name email"`
+
+5. **Monitor Logs**
+   - Check Amplify build logs
+   - Check browser console
+   - Check for unexpected errors
+
+## Rollback Procedure
+
+If deployment fails:
+
+1. **Identify Issue**
+   - Check Amplify build logs
+   - Check browser console errors
+   - Test critical user flows
+
+2. **Quick Fixes**
+   - Push hotfix to development first
+   - Test on development environment
+   - Merge to main when verified
+   - Auto-deploys in ~5 minutes
+
+3. **Full Rollback (Production)**
+   - Revert merge commit on main
+   - Push revert to main
+   - Verify old version works
+
+```bash
+# Revert last merge on main
+git checkout main
+git revert -m 1 HEAD
+git push origin main
+```
+
+## Deployment Documentation
+
+**See also:**
+- `plans/DEPLOYMENT_GUIDE.md` - Complete deployment guide
+- `plans/PRE_DEPLOYMENT_CHECKLIST.md` - Detailed checklist
+- `plans/GOOGLE_AUTH_DEPLOYMENT.md` - Google auth specifics
+- `docs/APPLE_SIGNIN_SETUP_COMPLETE.md` - Apple auth specifics
+
+## Common Deployment Issues
+
+### Issue: Build fails with memory error
+
+**Fix:** Already configured in package.json with `NODE_OPTIONS=--max-old-space-size=4096`
+
+### Issue: Apple Sign In fails after deploy
+
+**Fix:** Verify `authorize_scopes` includes `email` (see Authentication rules)
+
+### Issue: Secrets not found
+
+**Fix:** Configure secrets in Amplify Console (not Parameter Store for production)
+
+### Issue: Old app ID in config
+
+**Fix:** Verify all references use `d3tum5fq9u7q0a`, not `d3jeaom4vfrb67`

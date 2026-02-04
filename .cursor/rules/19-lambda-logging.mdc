@@ -1,0 +1,299 @@
+---
+title: Lambda Function Logging
+description: Logging patterns and cost optimization for Lambda functions
+priority: 80
+---
+
+# Lambda Function Logging
+
+## CRITICAL: Use Structured Logger
+
+**ALL Lambda functions MUST use the shared structured logger** (`amplify/functions/shared/logger.ts`) instead of `console.log()`, `console.error()`, etc.
+
+### Why?
+- **Cost Optimization**: Reduces CloudWatch costs by 60-80% through log level filtering
+- **Structured Logging**: JSON format enables efficient CloudWatch Insights queries
+- **Environment-Aware**: Automatically filters DEBUG logs in production
+- **Better Debugging**: Consistent format with context objects
+
+## Usage Pattern
+
+```typescript
+import { logger } from '../shared/logger';
+
+export const handler: Handler = async (event) => {
+  // ✅ CORRECT - Use logger with appropriate level
+  
+  // Errors (always logged)
+  try {
+    // ... operation
+  } catch (error) {
+    logger.error('Operation failed', {
+      userId,
+      operation: 'checkout',
+      sessionId,
+    }, error);
+  }
+  
+  // Warnings (logged in WARN/INFO/DEBUG mode)
+  if (isRateLimited(userId)) {
+    logger.warn('Rate limit exceeded', { userId, count });
+  }
+  
+  // Info (logged in INFO/DEBUG mode, filtered in ERROR/WARN only)
+  logger.info('Checkout session created', {
+    sessionId,
+    userId,
+    chips,
+    price,
+  });
+  
+  // Debug (only logged in DEBUG mode, filtered in production)
+  logger.debug('Processing request', {
+    method: event.requestContext?.http?.method,
+    path: event.path,
+  });
+  
+  // ❌ WRONG - Never use console methods directly
+  // console.log('Checkout created', session.id);
+  // console.error('Error:', error);
+};
+```
+
+## Log Levels
+
+| Level | When to Use | Production Default | Example |
+|-------|-------------|-------------------|---------|
+| `ERROR` | Errors, exceptions, failures | Always logged | Payment failed, authentication error |
+| `WARN` | Warnings, rate limits, validation failures | Logged | Rate limit exceeded, invalid input |
+| `INFO` | Important business events | Logged | Checkout created, purchase completed |
+| `DEBUG` | Detailed debugging information | **Filtered out** | Request details, processing steps |
+
+## Logger API
+
+```typescript
+// Error logging (always includes error details)
+logger.error(message: string, context?: Record<string, unknown>, error?: Error | unknown): void
+
+// Warning logging
+logger.warn(message: string, context?: Record<string, unknown>): void
+
+// Info logging
+logger.info(message: string, context?: Record<string, unknown>): void
+
+// Debug logging (only in DEBUG mode)
+logger.debug(message: string, context?: Record<string, unknown>): void
+```
+
+## Log Level Configuration
+
+The logger automatically detects the environment:
+- **Production**: Defaults to `INFO` level (filters out DEBUG)
+- **Development**: Defaults to `DEBUG` level (logs everything)
+
+To override, set `LOG_LEVEL` environment variable:
+```typescript
+// In resource.ts (optional - logger has good defaults)
+environment: {
+  // LOG_LEVEL: Set via secret() if needed, otherwise uses intelligent defaults
+}
+```
+
+Or set via Amplify secrets:
+```bash
+# For production (already default)
+npx ampx sandbox secret set LOG_LEVEL INFO
+
+# For development (already default)
+npx ampx sandbox secret set LOG_LEVEL DEBUG
+```
+
+## Best Practices
+
+### 1. Always Include Context
+
+**Bad:**
+```typescript
+logger.error('Payment failed');
+```
+
+**Good:**
+```typescript
+logger.error('Payment failed', {
+  userId,
+  sessionId,
+  amount,
+  errorCode: error.code,
+}, error);
+```
+
+### 2. Log Only Essential Fields
+
+**Bad:**
+```typescript
+logger.info('Request received', { event, headers, body, user, session });
+```
+
+**Good:**
+```typescript
+logger.info('Request received', {
+  method: event.requestContext?.http?.method,
+  path: event.path,
+  userId: user?.id,
+});
+```
+
+### 3. Use Appropriate Log Levels
+
+```typescript
+// ERROR - Something went wrong
+logger.error('Payment processing failed', { userId, sessionId }, error);
+
+// WARN - Something unusual but not critical
+logger.warn('Rate limit approaching', { userId, count: 4 });
+
+// INFO - Important business event
+logger.info('Checkout completed', { sessionId, userId, chips, price });
+
+// DEBUG - Detailed debugging info (only in development)
+logger.debug('Processing request', { body: event.body });
+```
+
+### 4. Never Log Sensitive Data
+
+**Never log:**
+- Passwords, tokens, API keys
+- Credit card numbers
+- Full request/response bodies with sensitive data
+- Personal Identifiable Information (PII) unnecessarily
+
+**Safe to log:**
+- User IDs (not passwords)
+- Transaction IDs
+- Error codes (not stack traces with file paths in production)
+- Business metrics
+
+### 5. Use Structured Context Objects
+
+**Bad:**
+```typescript
+logger.info(`User ${userId} purchased ${chips} chips for $${price}`);
+```
+
+**Good:**
+```typescript
+logger.info('Chip purchase', {
+  userId,
+  chips,
+  price,
+  sessionId,
+});
+```
+
+## Migration from console.* to logger
+
+### Before
+```typescript
+console.log('[CHECKOUT] Created session', session.id);
+console.error('[ERROR] Checkout failed:', error);
+console.warn('[RATE_LIMIT] User exceeded limit');
+```
+
+### After
+```typescript
+logger.info('Checkout session created', {
+  sessionId: session.id,
+  userId,
+  chips,
+  price,
+});
+
+logger.error('Checkout failed', {
+  userId,
+  sessionId: session.id,
+}, error);
+
+logger.warn('Rate limit exceeded', {
+  userId,
+  count,
+});
+```
+
+## Cost Impact
+
+### Before Optimization
+- All `console.log()` calls execute
+- Large objects logged
+- Debug logs in production
+- **Estimated: 100% log volume**
+
+### After Optimization
+- Only ERROR/WARN/INFO in production (DEBUG filtered)
+- Only essential fields logged
+- Structured JSON (easier to query)
+- **Estimated: 30-50% log volume reduction**
+
+### Combined with Retention Policies
+- 3-7 day retention for dev logs
+- 30 day retention for prod logs
+- **Estimated: 60-80% total cost reduction**
+
+## CloudWatch Insights Queries
+
+With structured logging, you can easily query logs:
+
+```sql
+-- Find all errors in last hour
+fields @timestamp, level, message, context.userId, error.message
+| filter level = "ERROR"
+| sort @timestamp desc
+| limit 100
+
+-- Find rate limit warnings
+fields @timestamp, message, context.userId, context.count
+| filter level = "WARN" and message like /rate limit/
+| sort @timestamp desc
+
+-- Find checkout events
+fields @timestamp, message, context.sessionId, context.userId, context.chips
+| filter level = "INFO" and message = "Checkout session created"
+| sort @timestamp desc
+```
+
+## Error ID Pattern
+
+For user-facing errors, include an error ID for support tracking:
+
+```typescript
+try {
+  // ... operation
+} catch (error) {
+  const errorId = randomUUID();
+  logger.error('Operation failed', {
+    errorId,
+    userId,
+    operation: 'checkout',
+  }, error);
+  
+  return {
+    statusCode: 500,
+    body: JSON.stringify({
+      error: 'Failed to process request',
+      errorId, // Include for support, but not error details
+    }),
+  };
+}
+```
+
+## Files Using Logger
+
+All Lambda functions should use the logger:
+- ✅ `amplify/functions/createStripeCheckout/handler.ts`
+- ✅ `amplify/functions/stripeWebhook/handler.ts`
+- ✅ Any new Lambda functions
+
+## Related Documentation
+
+- `docs/LOGGER_IMPLEMENTATION.md` - Detailed implementation guide
+- `docs/LOG_OPTIMIZATION_GUIDE.md` - Cost optimization strategies
+- `scripts/README_CLOUDWATCH.md` - CloudWatch management scripts

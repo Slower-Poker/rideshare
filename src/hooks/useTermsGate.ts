@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { fetchUserAttributes } from 'aws-amplify/auth';
 import { client } from '../client';
 import type { Schema } from '../../amplify/data/resource';
 import type { AuthUser } from '../types';
@@ -17,10 +18,8 @@ export function useTermsGate(user: AuthUser | null) {
 
   const getUniqueCoopMemberNumber = useCallback(async () => {
     return findUniqueCoopMemberNumber(async (candidate) => {
-      const { data: profiles, errors } = await client.models.UserProfile.list({
-        filter: { coopMemberNumber: { eq: candidate } },
-        limit: 1,
-      });
+      const listResult = await client.models.UserProfile.list({ filter: { coopMemberNumber: { eq: candidate } }, limit: 1 });
+      const { data: profiles, errors } = listResult as { data?: Schema['UserProfile']['type'][]; errors?: unknown[] };
 
       if (errors) {
         if (import.meta.env.DEV) {
@@ -38,6 +37,7 @@ export function useTermsGate(user: AuthUser | null) {
     if (normalized && normalized.length === 8) {
       if (normalized !== profile.coopMemberNumber) {
         try {
+          // @ts-expect-error - Amplify update return type too complex
           const { data, errors } = await client.models.UserProfile.update({
             id: profile.id,
             coopMemberNumber: normalized,
@@ -115,12 +115,30 @@ export function useTermsGate(user: AuthUser | null) {
         // Create user profile if it doesn't exist
         try {
           const coopMemberNumber = await getUniqueCoopMemberNumber();
+          
+          // Fetch Cognito attributes to sync to UserProfile
+          let cognitoAttributes: { givenName?: string; familyName?: string; phoneNumber?: string } = {};
+          try {
+            const attributes = await fetchUserAttributes();
+            if (attributes.given_name) cognitoAttributes.givenName = attributes.given_name;
+            if (attributes.family_name) cognitoAttributes.familyName = attributes.family_name;
+            if (attributes.phone_number) cognitoAttributes.phoneNumber = attributes.phone_number;
+          } catch (attrError) {
+            if (import.meta.env.DEV) {
+              console.error('Error fetching Cognito attributes:', attrError);
+            }
+            // Continue without attributes if fetch fails
+          }
+          
           const { data: newProfile, errors: createErrors } = await client.models.UserProfile.create({
             userId: user.userId,
             email: user.email,
             username: user.username,
             termsAccepted: false,
             coopMemberNumber,
+            driverRating: 5,
+            riderRating: 5,
+            ...cognitoAttributes,
           });
           
           if (createErrors) {
@@ -173,6 +191,21 @@ export function useTermsGate(user: AuthUser | null) {
     if (!userProfile) {
       try {
         const coopMemberNumber = await getUniqueCoopMemberNumber();
+        
+        // Fetch Cognito attributes to sync to UserProfile
+        let cognitoAttributes: { givenName?: string; familyName?: string; phoneNumber?: string } = {};
+        try {
+          const attributes = await fetchUserAttributes();
+          if (attributes.given_name) cognitoAttributes.givenName = attributes.given_name;
+          if (attributes.family_name) cognitoAttributes.familyName = attributes.family_name;
+          if (attributes.phone_number) cognitoAttributes.phoneNumber = attributes.phone_number;
+        } catch (attrError) {
+          if (import.meta.env.DEV) {
+            console.error('Error fetching Cognito attributes:', attrError);
+          }
+          // Continue without attributes if fetch fails
+        }
+        
         const { data: newProfile, errors: createErrors } = await client.models.UserProfile.create({
           userId: user.userId,
           email: user.email,
@@ -181,6 +214,9 @@ export function useTermsGate(user: AuthUser | null) {
           termsVersion: CURRENT_TERMS_VERSION,
           termsAcceptedDate: new Date().toISOString(),
           coopMemberNumber,
+          driverRating: 5,
+          riderRating: 5,
+          ...cognitoAttributes,
         });
 
         if (createErrors) {

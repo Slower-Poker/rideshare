@@ -1,0 +1,71 @@
+---
+title: Technology Stack
+description: Technologies used in RideShare.Click
+priority: 75
+---
+
+# Technology Stack
+
+| Category | Technology | Notes |
+|----------|-----------|-------|
+| **Frontend** | React 19+ with TypeScript | Strict mode enabled |
+| **Styling** | Tailwind CSS | Core utilities only |
+| **Icons** | lucide-react | Consistent icon library |
+| **Notifications** | React Toastify | Use toast functions, NOT alert() |
+| **Maps** | Leaflet + react-leaflet | Map views and ride locations |
+| **Backend** | AWS Amplify Gen 2 | Fully implemented |
+| **Authentication** | AWS Amplify Auth (SSO) | Google + Apple Sign-In |
+| **Data Storage** | AWS Amplify Data | GraphQL API with DynamoDB |
+| **State Management** | React hooks | useState, useReducer, custom hooks |
+| **Build Tool** | Vite | PWA support via vite-plugin-pwa |
+| **Validation** | Zod | Form and data validation |
+| **Testing** | Vitest (unit), Playwright (E2E) | See package.json scripts |
+
+## Key Dependencies
+
+### Frontend
+- `react` / `react-dom` - UI framework
+- `typescript` - Type safety
+- `tailwindcss` - Utility-first CSS
+- `lucide-react` - Icon library
+- `react-toastify` - Toast notifications
+- `zod` - Schema validation
+- `leaflet` / `react-leaflet` - Maps
+
+### Backend
+- `@aws-amplify/backend` - Amplify Gen 2 backend
+- `@aws-amplify/backend-cli` - CLI tools
+- `aws-amplify` - Frontend AWS integration
+- `aws-amplify/auth` - Authentication
+- `aws-amplify/data` - Data client
+
+### Build & Dev Tools
+- `vite` - Build tool and dev server
+- `@vitejs/plugin-react` - React plugin
+- `vite-plugin-pwa` - PWA support
+- `eslint` - Linting
+- `vitest` - Unit tests
+- `playwright` - E2E testing
+
+## Architecture Decisions
+
+### Why These Technologies?
+
+**React + TypeScript**: Type safety, strong ecosystem, self-documenting code
+
+**Tailwind CSS**: Rapid development, consistent design, no custom CSS files
+
+**AWS Amplify Gen 2**: Type-safe data, SSO, serverless backend
+
+**Vite**: Fast HMR, efficient builds
+
+**Leaflet**: Lightweight maps for ride locations and search
+
+**Vitest / Playwright**: Unit and E2E coverage
+
+## No Router Library
+
+View-based routing in `App.tsx` (no React Router):
+- `currentView` state drives which component is rendered
+- Views: home, map, findARideMap, bookRide, bookRideDetails, bookRideConfirm, bookaRideRequest, offerRide, ridePlannerChat, pools, connections, account, terms, license
+- Session storage used for view restoration on refresh (see `VIEW_STORAGE_KEY` in App.tsx)

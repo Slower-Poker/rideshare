@@ -1,0 +1,221 @@
+---
+title: Testing
+description: Testing strategies and best practices
+priority: 75
+---
+
+# Testing
+
+## Unit Tests (Vitest)
+
+```bash
+npm run test          # Run unit tests
+```
+
+## E2E Tests (Playwright)
+
+```bash
+npm run test:e2e           # Run E2E tests
+npx playwright install     # Install browsers (first time)
+npm run build && npm run preview   # Preview build, then run E2E against it if needed
+```
+
+### What E2E Tests Verify
+
+- ✅ Home page loads
+- ✅ Navigation (map, find ride, account, etc.)
+- ✅ No critical console errors
+
+### Test Location
+
+E2E tests are in `tests/smoke.spec.ts` (or project test directory).
+
+## Testing Best Practices
+
+### 1. Test Critical User Flows
+
+**Priority flows to test:**
+- Book a ride (find → details → confirm)
+- Offer a ride
+- Map and find rides
+- Sign in / account
+- Terms acceptance when required
+
+### 2. Test Error Scenarios
+
+- Invalid input
+- Network failures
+- Missing terms acceptance
+- Unauthenticated access to protected flows
+
+### 3. Test Edge Cases
+
+- Active ride restoration after refresh (if used)
+- Rapid button clicking
+- Empty states
+
+### 4. Run Tests Before Deployment
+
+```bash
+npm run type-check
+npm run test
+npm run test:e2e
+```
+
+### 5. Check Console Logs
+
+- Look for warnings and errors
+- Verify expected log prefixes appear
+- Check for unexpected API calls
+
+## Manual Testing Checklist
+
+Before deployment, manually test:
+
+### Authentication
+- [ ] Google Sign In (new user)
+- [ ] Google Sign In (existing user)
+- [ ] Apple Sign In (new user)
+- [ ] Apple Sign In (existing user)
+- [ ] Apple Sign In with "Hide My Email"
+- [ ] Sign out
+
+### Ride Flows
+- [ ] Find rides on map
+- [ ] Book a ride (details → confirm)
+- [ ] Offer a ride
+- [ ] Request a ride
+- [ ] Active ride persists on refresh (if used)
+
+### Pools & Connections
+- [ ] View/create driver or rider pools
+- [ ] Send/accept connection request
+- [ ] Rate user (verified ride or know person)
+
+### Account
+- [ ] Sign in (Google / Apple)
+- [ ] View profile
+- [ ] Update profile settings
+
+### Terms
+- [ ] Terms modal appears for new user
+- [ ] Terms modal appears after version update
+- [ ] Actions blocked without terms acceptance
+- [ ] Terms acceptance persists
+
+## Testing Tools
+
+### Browser DevTools
+
+**Console:**
+- Check for errors and warnings
+- Look for expected log prefixes
+- Verify API calls succeed
+
+**Network:**
+- Monitor GraphQL requests
+- Check for failed requests
+- Verify request/response data
+
+**Application → Local Storage:**
+- If active ride is used: check key/structure from activeRideStorage
+- Clear to test fresh state
+
+**Application → Session Storage:**
+- View restoration key (e.g. rideshare_current_view); terms/license not restored
+
+### Playwright Tips
+
+**Debugging Tests:**
+```bash
+# Run in headed mode (see browser)
+npx playwright test --headed
+
+# Run with debugging
+npx playwright test --debug
+
+# Run specific test
+npx playwright test -g "Home loads"
+```
+
+**Updating Tests:**
+```bash
+# Re-record test
+npx playwright codegen http://localhost:5173
+```
+
+## Test Data
+
+### Test Users
+
+Create test users with:
+- Google account
+- Apple ID
+- Different terms acceptance states
+
+### Test Data
+
+Create test data with:
+- Ride offers (various statuses, dates)
+- Ride requests
+- Pools and connections
+
+## When to Add Tests
+
+Add tests when:
+- Building new critical user flow
+- Fixing a bug (regression test)
+- Refactoring complex logic
+- Adding new feature with edge cases
+
+Don't over-test:
+- Simple UI components
+- Obvious utility functions
+- Amplify-generated code
+
+## Performance Testing
+
+### Load Time Targets
+
+- **Initial load**: < 2 seconds
+- **Navigation**: < 500ms
+- **API calls**: < 1 second
+- **Interaction response**: < 100ms (60fps)
+
+### How to Test Performance
+
+```bash
+# Run Lighthouse
+npm run build
+npm run preview
+# Open DevTools → Lighthouse → Run Analysis
+```
+
+**Targets:**
+- Performance: > 90
+- Accessibility: > 90
+- Best Practices: > 90
+- SEO: > 90
+
+## Continuous Testing
+
+### Pre-commit
+- Run linter: `npm run lint` (if configured)
+- Fix any errors before committing
+
+### Pre-push
+- Run tests: `npm run test` and `npm run test:e2e`
+- Build succeeds: `npm run build`
+
+### Pre-deploy
+- All tests pass
+- Manual testing checklist complete
+- No console errors on production build
+- Lighthouse scores meet targets
+
+## Known Test Limitations
+
+- No E2E tests for Apple Sign In (requires real Apple ID)
+- No automated GPS testing (requires device simulation)
+- No load testing (MVP doesn't require it yet)
+- No visual regression tests

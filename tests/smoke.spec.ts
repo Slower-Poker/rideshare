@@ -11,6 +11,7 @@ test.describe('RideShare.Click Smoke Tests', () => {
     await expect(page.getByText('RideShare.Click')).toBeVisible();
     await expect(page.getByRole('button', { name: /Map/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /Account/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Pool/i })).toBeVisible();
   });
 
   test('navigation to map view works', async ({ page }) => {
@@ -31,6 +32,18 @@ test.describe('RideShare.Click Smoke Tests', () => {
     
     // Verify account view loaded
     await expect(page.getByText('My Account')).toBeVisible();
+  });
+
+  test('navigation to pools view works', async ({ page }) => {
+    await page.goto('/');
+    
+    // Click pool button
+    await page.getByRole('button', { name: /Pool/i }).click();
+    
+    // Verify pools view loaded
+    await expect(page.getByText('Pools')).toBeVisible();
+    await expect(page.getByText('Rider Pools')).toBeVisible();
+    await expect(page.getByText('Driver Pools')).toBeVisible();
   });
 
   test('terms page is accessible', async ({ page }) => {

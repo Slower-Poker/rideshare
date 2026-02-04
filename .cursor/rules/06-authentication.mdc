@@ -1,0 +1,196 @@
+---
+title: Authentication
+description: Authentication patterns and Apple Sign In configuration
+priority: 88
+---
+
+# Authentication
+
+## USER AUTHENTICATION (Frontend/In-App)
+
+**CRITICAL: SSO-FIRST for all user-facing authentication**
+
+### ⚠️ OPTIONAL LOGIN ARCHITECTURE (2025-12-02)
+
+**The app now supports optional login - unauthenticated users can access the site.**
+
+**Key Changes:**
+- ✅ App loads without authentication requirement (`user` can be `null`)
+- ✅ Login moved to My Account page (not required at app entry)
+- ✅ Unauthenticated users can browse home, map, and find rides (read-only where allowed)
+- ✅ Authentication required for: booking rides, offering rides, Ride Planner chat, pools, connections
+
+**Implementation:**
+```typescript
+// App.tsx - No Authenticator wrapper, user can be null
+function App() {
+  const [user, setUser] = useState<AuthUser | null>(null);
+  // App loads without authentication; view routing in same file
+  return (/* renderView() with sharedProps */);
+}
+
+// MyAccountView.tsx - Login UI for unauthenticated users
+{!user && (
+  <Authenticator
+    signUpAttributes={['given_name', 'family_name']}
+    socialProviders={['google', 'apple']}
+  />
+)}
+```
+
+**Access Control:**
+- **Unauthenticated users can:**
+  - Browse home, map, find rides (read-only where schema allows)
+  - View My Account page (with sign-in UI)
+  
+- **Authentication required for:**
+  - Booking rides, offering rides
+  - Ride Planner chat (Nova)
+  - Pools, connections, ratings
+
+**Data Access:**
+- Guest read where needed: RideOffer, RideRequest (for discovery)
+- Authenticated read/write: UserProfile, RideParticipant, RideRating, Connection, HostPool, RiderPool, etc.
+- Uses `allow.guest().to(['read'])` in Amplify Gen 2 schema
+- Write operations still require authentication
+
+### Primary Method: Social Sign-In
+
+- **Google Sign-In** (preferred)
+- **Apple Sign-In** (iOS/macOS users)
+
+### Implementation
+
+```typescript
+// MyAccountView.tsx - Login UI for unauthenticated users
+<Authenticator
+  signUpAttributes={['given_name', 'family_name']}
+  socialProviders={['google', 'apple']}
+/>
+```
+
+### Requirements
+
+- ✅ Always configure `socialProviders={['google', 'apple']}`
+- ✅ Hide email/password fields in Authenticator UI when possible
+- ✅ All user-facing authentication flows prioritize SSO
+- ✅ Test with both Google and Apple sign-in
+- ✅ Ensure proper OAuth redirect URIs configured in AWS Cognito
+- ✅ Handle `user: AuthUser | null` throughout the app
+- ✅ Check `userProfile` before allowing restricted actions
+
+### Deprecated
+
+- ❌ **Email/password authentication is deprecated** - Do not implement new email/password flows
+
+## Apple Sign In Specific Configuration
+
+**CRITICAL: Apple Sign In has unique requirements that must be verified after each deployment.**
+
+### Secrets Configuration
+
+**For Production:**
+- ✅ Use **Amplify Console Secrets** (NOT Parameter Store)
+- ✅ Navigate to: Amplify Console → poker-ride-app-v1 → Hosting → Build settings → Environment variables → Secrets
+- ✅ Required secrets:
+  - `SIWA_CLIENT_ID` (Service ID from Apple)
+  - `SIWA_KEY_ID` (Key ID from Apple)
+  - `SIWA_PRIVATE_KEY` (Full `.p8` file contents including BEGIN/END lines)
+  - `SIWA_TEAM_ID` (Team ID from Apple)
+
+**For Sandbox (if needed):**
+```bash
+npx ampx sandbox secret set SIWA_CLIENT_ID --profile PowerUserAccess-058083005833
+# Repeat for all 4 secrets
+```
+
+### Cognito Identity Provider Configuration
+
+**⚠️ CRITICAL - NOT IN CODE:**
+
+The Apple Identity Provider in Cognito MUST have `authorize_scopes` set to `"name email"` (not just `"name"`).
+
+**Verify after each deployment:**
+```bash
+aws cognito-idp describe-identity-provider \
+  --user-pool-id ca-central-1_cJnPiAtry \
+  --provider-name SignInWithApple \
+  --profile PowerUserAccess-058083005833 \
+  --region ca-central-1 \
+  --query 'IdentityProvider.ProviderDetails.authorize_scopes'
+```
+
+**Expected output:** `"name email"`
+
+**Why this matters:**
+- First login: Apple shares email + name
+- Second login: Apple only sends what's in `authorize_scopes`
+- Missing `email`: Cognito returns `error=invalid_request` ❌
+
+### Apple Developer Console Configuration
+
+**Return URLs must include:**
+- ✅ `https://f1b534e41651b575d17b.auth.ca-central-1.amazoncognito.com/oauth2/idpresponse` (Cognito domain)
+- ✅ `https://main.d3tum5fq9u7q0a.amplifyapp.com/` (Amplify URL)
+- ✅ `https://rideshare.click/` (or your custom domain)
+- ✅ `http://localhost:5173/` (Local dev)
+
+**Common Issues:**
+- ❌ Using old Cognito domain
+- ❌ Missing `/oauth2/idpresponse` path on Cognito URL
+- ❌ Using old app ID (`d3jeaom4vfrb67` instead of `d3tum5fq9u7q0a`)
+
+### Testing Apple Sign In
+
+**After making changes:**
+1. Test first login ✅
+2. Sign out
+3. Test second login - **this is critical!**
+4. If second login fails, check `authorize_scopes`
+
+**To reset Apple authorization for testing:**
+- Mac: System Settings → Apple ID → Apps Using Apple ID → [Your App] → Stop Using Apple ID
+- iPhone/iPad: Settings → [Your Name] → Password & Security → Apps Using Apple ID
+
+### User Profile Creation
+
+Apple Sign In users get:
+- **Email**: Real email or Apple relay email (e.g., `abc123@privaterelay.appleid.com`)
+- **Username**: Generated as `Rider####` (not email-based like Google)
+- **Names**: From Apple attributes with fallbacks
+
+**Implementation in `src/App.tsx`:**
+- User lookup uses `user.username` (stable across sessions)
+- Profile creation handles Apple relay emails
+- Attribute fallbacks for missing data
+
+### Documentation
+
+**Complete guides:**
+- **Setup**: `docs/APPLE_SIGNIN_SETUP_COMPLETE.md` - Full configuration steps
+- **Troubleshooting**: `docs/APPLE_SIGNIN_TROUBLESHOOTING.md` - Common issues and fixes
+- **Cognito Config**: `docs/COGNITO_IDENTITY_PROVIDER_CONFIG.md` - Infrastructure details
+
+## BACKEND/API ACCESS (Development & Programmatic)
+
+**For AI/Developer/Script access to backend:**
+
+```typescript
+import { generateClient } from 'aws-amplify/data';
+import type { Schema } from '../amplify/data/resource';
+
+const client = generateClient<Schema>();
+```
+
+**Authentication Methods:**
+- **Sandbox environment**: Use AWS profile `PowerUserAccess-058083005833`
+  ```bash
+  npm run amplify:sandbox -- --profile PowerUserAccess-058083005833
+  ```
+- **Production**: IAM roles and API authentication
+- **NOT SSO-based** - SSO is only for human users in the web app
+
+**Verify AWS Identity:**
+```bash
+aws sts get-caller-identity --profile PowerUserAccess-058083005833
+```

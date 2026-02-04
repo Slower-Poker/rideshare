@@ -1,0 +1,152 @@
+---
+title: Decision Trees
+description: Step-by-step guides for debugging and feature development
+priority: 80
+---
+
+# Decision Trees
+
+## When User Reports Bug
+
+```
+Bug Reported
+    ↓
+Is it AWS credential/deployment related?
+    YES → Run aws sso login (with project profile if configured)
+          Verify: aws sts get-caller-identity
+          Run npm run amplify:sandbox
+    NO  ↓
+Is it auth-related?
+    YES → Check amplify/auth/resource.ts (SSO, callback URLs)
+          Check App.tsx (user state, getCurrentUser)
+          Check MyAccountView (Authenticator when !user)
+          For Apple Sign In: authorize_scopes "name email"
+    NO  ↓
+Is it ride/map-related?
+    YES → Check FindARideMap, RideMapView, BookRideDetails
+          Check geoUtils, mapUtils, useGeolocation
+          Check Amplify queries (RideOffer, RideParticipant)
+    NO  ↓
+Is it Ride Planner (Nova) related?
+    YES → Check user is authenticated
+          Check chatRidePlanner query and novaAgentProxy Lambda
+          See 18-lambda-security.mdc
+    NO  ↓
+Is it styling-related?
+    YES → Use core Tailwind utilities only
+          Remove arbitrary values and custom classes
+          Verify tailwind.config.js content paths
+    NO  ↓
+Is it state/view-related?
+    YES → Check localStorage only in activeRideStorage
+          Check sessionStorage for view restoration (App.tsx)
+          Verify currentView and sharedProps
+    NO  ↓
+Check console and errorHandler logs
+Check network tab for GraphQL/auth errors
+Try incognito (fresh state)
+```
+
+## When Adding New Feature
+
+```
+New Feature Request
+    ↓
+Does it require new component?
+    YES → Create in src/components/
+          Keep under ~300 lines; extract if larger
+          Use TypeScript and sharedProps where applicable
+    NO  ↓
+Does it require new data model?
+    YES → Update amplify/data/resource.ts
+          Add authorization (allow.authenticated() / allow.guest() as appropriate)
+          Redeploy: npm run amplify:sandbox
+          Update src/types/index.ts
+          Enforce ownership in app code for mutations
+    NO  ↓
+Does it require state persistence?
+    YES → Is it active ride only?
+              YES → Use activeRideStorage.ts (localStorage)
+              NO  → Use Amplify Data (backend)
+    NO  ↓
+Does it require user notification?
+    YES → Use utils/toast.ts (never alert())
+    NO  ↓
+Does it require auth check?
+    YES → Check user / userProfile; use useTermsGate if terms required
+    NO  ↓
+Implement with types, error handling, and toasts
+Test locally; add E2E test if critical flow
+Commit with conventional commit message
+```
+
+## When Debugging Booking / Offer Flow
+
+```
+Booking or offer not working
+    ↓
+Check console and network for Amplify errors
+    ↓
+Is user authenticated?
+    YES → Check data/errors on create/update
+          Check ownership (hostId, riderId, requesterId)
+    NO  → Redirect to account or show sign-in prompt
+    ↓
+Does mutation require terms?
+    YES → useTermsGate; prompt terms if not accepted
+    NO  ↓
+Check schema: RideOffer, RideParticipant, RideRequest
+Check authorization and mutation security (10-data-models.mdc)
+```
+
+## When Debugging Active Ride Persistence
+
+```
+Active ride not persisting/restoring
+    ↓
+Check activeRideStorage.ts read/write
+    ↓
+Is data in localStorage?
+    YES → Verify key and structure (rideOfferId, role, lastUpdated)
+          Check component restores on mount
+    NO  → Ensure only activeRideStorage writes ride data to localStorage
+          Check persist/restore calls
+    ↓
+Check sessionStorage for view (VIEW_STORAGE_KEY)
+Terms/license views are not restored (by design)
+```
+
+## When Choosing Storage Method
+
+```
+Need to store data
+    ↓
+Is it active ride recovery only?
+    YES → Use activeRideStorage.ts (localStorage)
+    NO  ↓
+Is it user/ride/pool/connection data?
+    YES → Use Amplify Data (UserProfile, RideOffer, etc.)
+    NO  ↓
+Is it temporary UI state?
+    YES → Use React state (useState / useReducer)
+    NO  ↓
+Never use sessionStorage for app state, IndexedDB, or cookies for state
+(PWA keys in localStorage are allowed with rideshare_ prefix)
+```
+
+## When Choosing Authorization Pattern
+
+```
+Adding data model authorization
+    ↓
+Should unauthenticated users read? (e.g. ride discovery)
+    YES → allow.guest().to(['read'])
+          allow.authenticated() for create/update/delete
+    NO  ↓
+Authenticated only?
+    YES → allow.authenticated().to(['read', 'create', 'update', 'delete'])
+    NO  ↓
+Enforce ownership in application code (hostId, riderId, requesterId, etc.)
+Do not use allow.owner() for models that need cross-user read (e.g. listings)
+See 10-data-models.mdc for mutation security
+```

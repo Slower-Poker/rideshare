@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, MapPin, Clock, Users, DollarSign, FileText, CheckCircle } from 'lucide-react';
 import { client } from '../client';
+import type { Schema } from '../../amplify/data/resource';
 import type { SharedProps, Location } from '../types';
 import { toast } from '../utils/toast';
 
@@ -92,16 +93,6 @@ export function BookRideConfirm({ setCurrentView, user }: SharedProps) {
         return;
       }
       
-      // Check if RideRequest model is available
-      if (!client.models.RideRequest) {
-        if (import.meta.env.DEV) {
-          console.error('RideRequest model not available. Please restart the Amplify sandbox.');
-        }
-        toast.error('Ride request feature is not available yet. Please restart the Amplify sandbox and try again.');
-        setSaving(false);
-        return;
-      }
-
       // Validate and convert requestedTime to ISO format
       if (!bookingData.requestedTime) {
         toast.error('Requested time is missing');
@@ -118,25 +109,48 @@ export function BookRideConfirm({ setCurrentView, user }: SharedProps) {
 
       const requestedTimeISO = requestedDateTime.toISOString();
       
-      // Create ride request
-      const { data: rideRequest, errors } = await client.models.RideRequest.create({
-        requesterId: profile.id,
-        pickupLatitude: bookingData.pickup.latitude,
-        pickupLongitude: bookingData.pickup.longitude,
-        pickupAddress: bookingData.pickup.address || undefined,
-        dropoffLatitude: bookingData.dropoff.latitude,
-        dropoffLongitude: bookingData.dropoff.longitude,
-        dropoffAddress: bookingData.dropoff.address || undefined,
-        requestedTime: requestedTimeISO,
-        numberOfSeats: bookingData.numberOfSeats!,
+      // Calculate expiry (departure + 60 minutes grace)
+      const graceMinutes = 60;
+      const expiresAt = new Date(requestedDateTime.getTime() + graceMinutes * 60 * 1000);
+      
+      // Extract region from address for filtering
+      const extractRegion = (address: string | undefined): string | undefined => {
+        if (!address) return undefined;
+        const part = address.split(',')[0]?.trim();
+        return part || undefined;
+      };
+      
+      // Create ride with rideType: 'request' (TS2590: Amplify return type too complex)
+      // @ts-expect-error - Amplify generated union type too complex
+      const result = await client.models.Ride.create({
+        hostId: profile.id,
+        rideType: 'request',
+        status: 'open',
+        originLatitude: bookingData.pickup.latitude,
+        originLongitude: bookingData.pickup.longitude,
+        originAddress: bookingData.pickup.address || undefined,
+        originRegion: extractRegion(bookingData.pickup.address),
+        destinationLatitude: bookingData.dropoff.latitude,
+        destinationLongitude: bookingData.dropoff.longitude,
+        destinationAddress: bookingData.dropoff.address || undefined,
+        destinationRegion: extractRegion(bookingData.dropoff.address),
+        departureTime: requestedTimeISO,
+        expiresAt: expiresAt.toISOString(),
+        graceMinutes: graceMinutes,
+        totalSeats: bookingData.numberOfSeats!,
+        seatsBooked: 0,
+        pricePerSeat: 0, // Requests don't have a set price
         maximumAmount: bookingData.maximumAmount!,
         notes: bookingData.notes || undefined,
-        status: 'pending',
+        isReturnTrip: false,
         createdAt: new Date().toISOString(),
-      });
+      }) as { data?: Schema['Ride']['type']; errors?: unknown[] };
+      const { data: rideRequest, errors } = result;
 
       if (errors) {
-        console.error('Error creating ride request:', errors);
+        if (import.meta.env.DEV) {
+          console.error('Error creating ride request:', errors);
+        }
         toast.error('Failed to create ride request. Please try again.');
         setSaving(false);
         return;
@@ -179,7 +193,7 @@ export function BookRideConfirm({ setCurrentView, user }: SharedProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <main id="main-content" className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm z-10">
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center gap-4">
@@ -364,7 +378,7 @@ export function BookRideConfirm({ setCurrentView, user }: SharedProps) {
           </div>
         </div>
       </div>
-    </div>
+    </main>
   );
 }
 

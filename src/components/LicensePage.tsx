@@ -43,7 +43,7 @@ export function LicensePage({ setCurrentView }: SharedProps) {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 py-8">
+      <main id="main-content" className="max-w-4xl mx-auto px-4 py-8">
         <div className="bg-white rounded-lg shadow-md p-8 mb-8">
           <div className="mb-6 pb-6 border-b border-gray-200">
             <h2 className="text-3xl font-bold text-gray-900 mb-2">

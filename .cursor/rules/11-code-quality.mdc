@@ -1,0 +1,211 @@
+---
+title: Code Quality Standards
+description: TypeScript, naming conventions, and error handling
+priority: 78
+---
+
+# Code Quality Standards
+
+## TypeScript Usage
+
+- Define interfaces for all data structures
+- Use proper typing for props and state
+- Avoid `any` type - use `unknown` or proper types
+- Enable strict mode in `tsconfig.json`
+- Use Amplify Schema types: `Schema['Event']['type']`
+
+### Example: Typed Component
+
+```typescript
+import type { Schema } from '../amplify/data/resource';
+
+interface HomePageProps {
+  events: Array<Schema['Event']['type']>;
+  userProfile: Schema['UserProfile']['type'];
+  setView: (view: 'home' | 'participant' | 'results') => void;
+}
+
+const HomePage: React.FC<HomePageProps> = ({ events, userProfile, setView }) => {
+  // Component implementation
+};
+```
+
+## Naming Conventions
+
+| Type | Convention | Examples |
+|------|-----------|----------|
+| **Components** | PascalCase | `PlayerDashboard`, `CardDisplay`, `HomePage` |
+| **Functions** | camelCase | `drawRandomCard`, `evaluatePokerHand` |
+| **Constants** | UPPER_SNAKE_CASE | `TERMS_VERSION`, `MAX_CARDS`, `POKER_RANKS` |
+| **Files (components)** | PascalCase | `HomePage.tsx`, `CardDisplay.tsx` |
+| **Files (utilities)** | camelCase | `geoUtils.ts`, `mapUtils.ts` |
+| **Types/Interfaces** | PascalCase | `EventModel`, `ActiveHand`, `LocalCard` |
+| **Hooks** | camelCase with `use` prefix | `useTermsGate`, `useUnifiedTimer` |
+| **Event Handlers** | camelCase with `handle` prefix | `handleBookRide`, `handleOfferRide` |
+
+## Component Best Practices
+
+### ✅ GOOD: Clear, typed props, lazy loaded
+
+```typescript
+const HomePage: React.FC<HomePageProps> = ({ events, userProfile, setView }) => {
+  // Component implementation
+};
+
+// Lazy load in App.tsx if used
+const HomePage = React.lazy(() => import('./components/HomePage'));
+
+// Use Suspense with fallback
+<Suspense fallback={<LoadingFallback />}>
+  <HomePage {...props} />
+</Suspense>
+```
+
+### ❌ BAD: Untyped props, unclear purpose
+
+```typescript
+const HomePage = (props) => { ... };
+```
+
+## Error Handling
+
+```typescript
+import { handleError } from './utils/errorHandler';
+
+try {
+  // Amplify API call
+  const { data, errors } = await client.models.Card.create({...});
+  
+  // CRITICAL: Explicit error checking (Amplify doesn't throw!)
+  if (!data || (errors && errors.length > 0)) {
+    throw new Error(`Card creation failed: ${errors?.[0]?.message}`);
+  }
+} catch (error) {
+  handleError(error, { context: 'Booking', userId: user.id });
+  showErrorToast('Failed to complete booking. Please try again.');
+}
+```
+
+### Error Handling Rules
+
+- ✅ Use `handleError` utility for all error handling
+- ✅ Wrap Amplify API calls in try-catch blocks
+- ✅ Check `data` and `errors` explicitly (Amplify GraphQL doesn't throw)
+- ✅ Provide user-friendly error messages via toast
+- ✅ Log errors to console in development
+
+## User Notifications & Feedback
+
+**DEFAULT: React Toastify (NOT alert())**
+
+```typescript
+import { showSuccessToast, showErrorToast, showInfoToast, showWarningToast } from '../utils/toast';
+
+// ✅ SUCCESS
+showSuccessToast('Profile updated successfully!');
+
+// ✅ ERROR
+showErrorToast('Failed to update profile. Please try again.');
+
+// ✅ INFO
+showInfoToast('Your session will expire in 5 minutes.');
+
+// ✅ WARNING
+showWarningToast('You have unsaved changes.');
+
+// ✅ CONFIRMATION (use window.confirm)
+if (window.confirm('Are you sure you want to delete this?')) {
+  // Proceed with deletion
+}
+
+// ❌ DO NOT USE alert()
+alert('Success!'); // FORBIDDEN (except critical blocking errors)
+```
+
+### When to Use What
+
+| Notification Type | Use Case | Function |
+|------------------|----------|----------|
+| **Success** | Successful operations, confirmations | `showSuccessToast()` |
+| **Error** | Failed operations, validation errors | `showErrorToast()` |
+| **Info** | Status updates, informational messages | `showInfoToast()` |
+| **Warning** | Cautions, reversible issues | `showWarningToast()` |
+| **Confirmation** | Yes/No decisions, destructive actions | `window.confirm()` |
+| **Alert** | ❌ NEVER (except critical blocking errors) | - |
+
+## Console Logging
+
+Use consistent prefixes for debugging:
+
+```typescript
+console.log('[BookRideConfirm] Submitting booking...');
+console.log('[FindARideMap] Fetching rides for area:', bounds);
+console.error('[OfferaRide] Error creating ride offer:', error);
+console.warn('[activeRideStorage] Invalid ride data, clearing storage');
+```
+
+### Standard Prefixes
+
+- `[ComponentName]` - Component-level logs
+- `[functionName]` - Function-level logs
+- `[utilityFile]` - Utility function logs
+
+## Performance Optimization
+
+```typescript
+// ✅ Memoize expensive calculations
+const distance = useMemo(() => calculateDistance(origin, destination), [origin, destination]);
+
+// ✅ Prevent unnecessary re-renders
+const handleBookRide = useCallback(async () => {
+  // Implementation
+}, [dependencies]);
+
+// ✅ Lazy load components if needed
+const RidePlannerChat = React.lazy(() => import('./components/RidePlannerChat'));
+```
+
+## Code Comments
+
+### When to Comment
+
+- Complex business logic
+- Non-obvious workarounds
+- Performance optimizations
+- Important constraints or limitations
+- API quirks (e.g., "Amplify doesn't throw errors")
+
+### Example
+
+```typescript
+// CRITICAL: Amplify GraphQL doesn't throw on errors, must check explicitly
+if (!data || (errors && errors.length > 0)) {
+  throw new Error(`Failed: ${errors?.[0]?.message}`);
+}
+
+// Restore only if stored data is valid (e.g. active ride)
+if (!isActiveRideValid(stored)) {
+  console.warn('[activeRideStorage] Invalid ride data, clearing storage');
+  clearActiveRide();
+  return;
+}
+```
+
+## Function Documentation
+
+Use JSDoc for exported utilities:
+
+```typescript
+/**
+ * Calculates distance between two points (Haversine)
+ * @param from - Origin lat/lng
+ * @param to - Destination lat/lng
+ * @returns Distance in km
+ */
+export function calculateDistance(
+  from: { lat: number; lng: number },
+  to: { lat: number; lng: number }
+): number {
+  // Implementation (e.g. geoUtils)
+}
+```
