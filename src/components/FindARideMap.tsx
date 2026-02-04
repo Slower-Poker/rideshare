@@ -2,8 +2,10 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Loader2, MapPin, Clock, DollarSign, Users, Trash2, Map as MapIcon } from 'lucide-react';
 import { client } from '../client';
-import type { SharedProps, Location, RideRequest, RideOffer } from '../types';
+import type { SharedProps, Location, Ride } from '../types';
 import { loadMapLibre, isMapLibreLoaded, getMapLibreInstance } from '../utils/maplibreLoader';
+import { RideStatusBadge, RideTypeBadge } from './RideStatusBadge';
+import { getDisplayName, formatRelativeDate, formatPrice, getAvailableSeats } from '../utils/rideUtils';
 import {
   DEFAULT_CENTER,
   DEFAULT_ZOOM,
@@ -16,7 +18,35 @@ import {
 import { toast } from '../utils/toast';
 
 /**
- * MapPreview component - renders a simple visual representation of the route
+ * Calculate OSM tile coordinates from lat/lng
+ */
+function latLngToTile(lat: number, lng: number, zoom: number): { x: number; y: number } {
+  const n = Math.pow(2, zoom);
+  const x = Math.floor((lng + 180) / 360 * n);
+  const latRad = lat * Math.PI / 180;
+  const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n);
+  return { x, y };
+}
+
+/**
+ * Calculate appropriate zoom level based on the distance between points
+ */
+function calculateZoomLevel(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const latDiff = Math.abs(lat1 - lat2);
+  const lngDiff = Math.abs(lng1 - lng2);
+  const maxDiff = Math.max(latDiff, lngDiff);
+  
+  if (maxDiff > 2) return 7;
+  if (maxDiff > 1) return 8;
+  if (maxDiff > 0.5) return 9;
+  if (maxDiff > 0.2) return 10;
+  if (maxDiff > 0.1) return 11;
+  if (maxDiff > 0.05) return 12;
+  return 13;
+}
+
+/**
+ * MapPreview component - renders actual map tile with route markers overlay
  */
 function MapPreviewPlaceholder({ 
   originLat, 
@@ -29,54 +59,94 @@ function MapPreviewPlaceholder({
   destLat: number; 
   destLng: number;
 }) {
-  // Calculate relative positions for the markers (0-100%)
-  // Normalize to show direction of travel
-  const minLat = Math.min(originLat, destLat);
-  const maxLat = Math.max(originLat, destLat);
-  const minLng = Math.min(originLng, destLng);
-  const maxLng = Math.max(originLng, destLng);
+  // Calculate center point and zoom level
+  const centerLat = (originLat + destLat) / 2;
+  const centerLng = (originLng + destLng) / 2;
+  const zoom = calculateZoomLevel(originLat, originLng, destLat, destLng);
   
-  const latRange = maxLat - minLat || 0.01;
-  const lngRange = maxLng - minLng || 0.01;
+  // Get tile coordinates for the center
+  const tile = latLngToTile(centerLat, centerLng, zoom);
   
-  // Add padding (10%)
-  const padding = 15;
-  const scale = 100 - padding * 2;
+  // Generate OSM tile URL
+  const tileUrl = `https://tile.openstreetmap.org/${zoom}/${tile.x}/${tile.y}.png`;
   
-  const originX = padding + ((originLng - minLng) / lngRange) * scale;
-  const originY = padding + ((maxLat - originLat) / latRange) * scale; // Flip Y axis
-  const destX = padding + ((destLng - minLng) / lngRange) * scale;
-  const destY = padding + ((maxLat - destLat) / latRange) * scale;
+  // Calculate marker positions within the tile (as percentage)
+  // Each tile covers a specific geographic area
+  const n = Math.pow(2, zoom);
+  const tileMinLng = tile.x / n * 360 - 180;
+  const tileMaxLng = (tile.x + 1) / n * 360 - 180;
+  const tileMinLatRad = Math.atan(Math.sinh(Math.PI * (1 - 2 * (tile.y + 1) / n)));
+  const tileMaxLatRad = Math.atan(Math.sinh(Math.PI * (1 - 2 * tile.y / n)));
+  const tileMinLat = tileMinLatRad * 180 / Math.PI;
+  const tileMaxLat = tileMaxLatRad * 180 / Math.PI;
+  
+  // Calculate marker positions as percentages within the tile
+  const originX = ((originLng - tileMinLng) / (tileMaxLng - tileMinLng)) * 100;
+  const originY = ((tileMaxLat - originLat) / (tileMaxLat - tileMinLat)) * 100;
+  const destX = ((destLng - tileMinLng) / (tileMaxLng - tileMinLng)) * 100;
+  const destY = ((tileMaxLat - destLat) / (tileMaxLat - tileMinLat)) * 100;
+  
+  // Clamp values to stay within bounds
+  const clamp = (val: number) => Math.max(5, Math.min(95, val));
   
   return (
-    <svg viewBox="0 0 100 100" className="w-full h-full" aria-hidden="true">
-      {/* Background gradient */}
-      <defs>
-        <linearGradient id="routeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#e0f2f1" />
-          <stop offset="100%" stopColor="#f0f9ff" />
-        </linearGradient>
-      </defs>
-      <rect width="100" height="100" fill="url(#routeGradient)" />
-      
-      {/* Route line */}
-      <line 
-        x1={originX} 
-        y1={originY} 
-        x2={destX} 
-        y2={destY} 
-        stroke="#10b981" 
-        strokeWidth="3" 
-        strokeLinecap="round"
-        strokeDasharray="4,2"
+    <div className="relative w-full h-full overflow-hidden">
+      {/* Map tile background */}
+      <img
+        src={tileUrl}
+        alt=""
+        className="absolute inset-0 w-full h-full object-cover"
+        loading="lazy"
+        crossOrigin="anonymous"
+        onError={(e) => {
+          // Fallback to gradient if tile fails to load
+          e.currentTarget.style.display = 'none';
+        }}
       />
       
-      {/* Origin marker */}
-      <circle cx={originX} cy={originY} r="6" fill="#10b981" stroke="white" strokeWidth="2" />
+      {/* Fallback gradient background */}
+      <div className="absolute inset-0 bg-gradient-to-br from-teal-50 to-blue-50" style={{ zIndex: -1 }} />
       
-      {/* Destination marker */}
-      <circle cx={destX} cy={destY} r="6" fill="#ef4444" stroke="white" strokeWidth="2" />
-    </svg>
+      {/* Route overlay SVG */}
+      <svg 
+        viewBox="0 0 100 100" 
+        className="absolute inset-0 w-full h-full" 
+        aria-hidden="true"
+        preserveAspectRatio="none"
+      >
+        {/* Route line */}
+        <line 
+          x1={clamp(originX)} 
+          y1={clamp(originY)} 
+          x2={clamp(destX)} 
+          y2={clamp(destY)} 
+          stroke="#10b981" 
+          strokeWidth="3" 
+          strokeLinecap="round"
+          strokeOpacity="0.8"
+        />
+        
+        {/* Origin marker (green) */}
+        <circle 
+          cx={clamp(originX)} 
+          cy={clamp(originY)} 
+          r="6" 
+          fill="#10b981" 
+          stroke="white" 
+          strokeWidth="2" 
+        />
+        
+        {/* Destination marker (red) */}
+        <circle 
+          cx={clamp(destX)} 
+          cy={clamp(destY)} 
+          r="6" 
+          fill="#ef4444" 
+          stroke="white" 
+          strokeWidth="2" 
+        />
+      </svg>
+    </div>
   );
 }
 
@@ -94,8 +164,8 @@ type MapLibreMap = any;
 type MapLibreMarker = any;
 type MapLibreCircle = any;
 
-interface RideRequestMarker {
-  rideRequest: RideRequest;
+interface RideMarkerData {
+  ride: Ride;
   actualPickupLocation: Location;
   displayPickupLocation: Location; // Random position within 700m circle
   actualDropoffLocation: Location | null;
@@ -172,8 +242,8 @@ function formatOfferDeparture(iso: string): string {
 export function FindARideMap({ setCurrentView, user }: SharedProps) {
   const [tab, setTab] = useState<ListTab>('requests');
   const [viewMode, setViewMode] = useState<ViewMode>('map');
-  const [rideRequests, setRideRequests] = useState<RideRequest[]>([]);
-  const [rideOffers, setRideOffers] = useState<RideOffer[]>([]);
+  const [rideRequests, setRideRequests] = useState<Ride[]>([]);
+  const [rideOffers, setRideOffers] = useState<Ride[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingOffers, setLoadingOffers] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -192,7 +262,7 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
   const [containerReady, setContainerReady] = useState(false);
   
   const mapRef = useRef<MapLibreMap | null>(null);
-  const markersRef = useRef<RideRequestMarker[]>([]);
+  const markersRef = useRef<RideMarkerData[]>([]);
   const offerMarkersRef = useRef<MapLibreMarker[]>([]); // Separate ref for offer markers
   const containerRef = useRef<HTMLDivElement | null>(null);
   const containerRetryCountRef = useRef(0);
@@ -207,34 +277,34 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
     setContainerReady(!!node);
   }, []);
 
-  // Handle cancel ride request
-  const handleCancelRide = useCallback(async (requestId: string, map: any) => {
+  // Handle cancel ride (works for both requests and offers)
+  const handleCancelRide = useCallback(async (rideId: string, map: any) => {
     if (!user) {
-      toast.error('Please sign in to cancel ride requests');
+      toast.error('Please sign in to cancel rides');
       return;
     }
 
-    if (!confirm('Are you sure you want to cancel this ride request?')) {
+    if (!confirm('Are you sure you want to cancel this ride?')) {
       return;
     }
 
     try {
-      const { data, errors } = await client.models.RideRequest.update({
-        id: requestId,
+      const { data, errors } = await client.models.Ride.update({
+        id: rideId,
         status: 'cancelled',
       });
 
       if (errors) {
-        console.error('Error cancelling ride request:', errors);
-        toast.error('Failed to cancel ride request. Please try again.');
+        console.error('Error cancelling ride:', errors);
+        toast.error('Failed to cancel ride. Please try again.');
         return;
       }
 
       if (data) {
-        toast.success('Ride request cancelled successfully');
+        toast.success('Ride cancelled successfully');
         
         // Remove marker and route from map
-        const markerData = markersRef.current.find(m => m.rideRequest.id === requestId);
+        const markerData = markersRef.current.find(m => m.ride.id === rideId);
         if (markerData) {
           try {
             if (markerData.marker) {
@@ -255,19 +325,20 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
         }
         
         // Remove from markers array
-        markersRef.current = markersRef.current.filter(m => m.rideRequest.id !== requestId);
+        markersRef.current = markersRef.current.filter(m => m.ride.id !== rideId);
         
-        if (selectedRequestIdRef.current === requestId) {
+        if (selectedRequestIdRef.current === rideId) {
           selectedRequestIdRef.current = null;
         }
         
         // Reload ride requests
-        const { data: updatedRequests, errors: listErrors } = await client.models.RideRequest.list({
+        const { data: updatedRequests, errors: listErrors } = await client.models.Ride.list({
           filter: {
-            status: { eq: 'pending' },
+            rideType: { eq: 'request' },
+            status: { eq: 'open' },
           },
           limit: 100,
-        });
+        }) as { data?: Ride[]; errors?: unknown[] };
 
         if (!listErrors && updatedRequests) {
           const sorted = updatedRequests.sort((a, b) => {
@@ -279,35 +350,39 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
         }
       }
     } catch (err) {
-      console.error('Error cancelling ride request:', err);
+      console.error('Error cancelling ride:', err);
       toast.error('An error occurred. Please try again.');
     }
   }, [user]);
 
-  // Handle delete ride offer
+  // Handle delete/cancel ride offer
   const handleDeleteOffer = useCallback(async (offerId: string) => {
     if (!user) {
-      toast.error('Please sign in to delete ride offers');
+      toast.error('Please sign in to cancel rides');
       return;
     }
 
-    if (!confirm('Are you sure you want to delete this ride offer? This cannot be undone.')) {
+    if (!confirm('Are you sure you want to cancel this ride? This cannot be undone.')) {
       return;
     }
 
     setDeletingOfferId(offerId);
     try {
-      const { errors } = await client.models.RideOffer.delete({ id: offerId });
+      // Cancel the ride instead of deleting
+      const { errors } = await client.models.Ride.update({ 
+        id: offerId,
+        status: 'cancelled',
+      });
       if (errors?.length) {
-        console.error('Error deleting ride offer:', errors);
-        toast.error('Failed to delete ride offer');
+        console.error('Error cancelling ride:', errors);
+        toast.error('Failed to cancel ride');
       } else {
-        toast.success('Ride offer deleted');
+        toast.success('Ride cancelled');
         setRideOffers((prev) => prev.filter((o) => o.id !== offerId));
       }
     } catch (e) {
-      console.error('Error deleting ride offer:', e);
-      toast.error('Failed to delete ride offer');
+      console.error('Error cancelling ride:', e);
+      toast.error('Failed to cancel ride');
     } finally {
       setDeletingOfferId(null);
     }
@@ -327,7 +402,7 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
     }
 
     // Find the marker data
-    const markerData = markersRef.current.find(m => m.rideRequest.id === requestId);
+    const markerData = markersRef.current.find(m => m.ride.id === requestId);
     if (!markerData || !markerData.actualDropoffLocation || !markerData.displayDropoffLocation) {
       return;
     }
@@ -340,7 +415,7 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
 
     // Remove previous route and dropoff marker if different request
     if (selectedRequestIdRef.current && selectedRequestIdRef.current !== requestId) {
-      const previousMarker = markersRef.current.find(m => m.rideRequest.id === selectedRequestIdRef.current);
+      const previousMarker = markersRef.current.find(m => m.ride.id === selectedRequestIdRef.current);
       if (previousMarker) {
         try {
           if (previousMarker.dropoffMarker) {
@@ -625,20 +700,14 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
       setError(null);
 
       try {
-        if (!client.models.RideRequest) {
-          const errorMsg = 'RideRequest model not available. Please restart the Amplify sandbox.';
-          setError(errorMsg);
-          toast.error('Ride request feature is not available yet.');
-          setLoading(false);
-          return;
-        }
-
-        const { data, errors } = await client.models.RideRequest.list({
+        // Load rides with rideType: 'request' and status: 'open'
+        const { data, errors } = await client.models.Ride.list({
           filter: {
-            status: { eq: 'pending' }, // Only show pending requests
+            rideType: { eq: 'request' },
+            status: { eq: 'open' },
           },
           limit: 100,
-        });
+        }) as { data?: Ride[]; errors?: unknown[] };
 
         if (errors) {
           console.error('Error loading ride requests:', errors);
@@ -671,11 +740,14 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
     async function loadOffers() {
       setLoadingOffers(true);
       try {
-        // @ts-expect-error TS2590 - Amplify list return type is too complex
-        const raw: { data?: RideOffer[]; errors?: unknown[] } = await client.models.RideOffer.list({
-          filter: { status: { eq: 'available' } },
+        // Load rides with rideType: 'offer' and status: 'open' or 'scheduled'
+        const raw: { data?: Ride[]; errors?: unknown[] } = await client.models.Ride.list({
+          filter: {
+            rideType: { eq: 'offer' },
+            status: { eq: 'open' },
+          },
           limit: 50,
-        });
+        }) as { data?: Ride[]; errors?: unknown[] };
         const data = raw.data;
         const errors = raw.errors;
         if (cancelled) return;
@@ -688,7 +760,7 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
             const tB = new Date(b.departureTime ?? 0).getTime();
             return tA - tB;
           });
-          setRideOffers(sorted as RideOffer[]);
+          setRideOffers(sorted as Ride[]);
         }
       } catch (err) {
         if (import.meta.env.DEV) console.error('Error loading ride offers:', err);
@@ -893,14 +965,14 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
       const RADIUS_KM = 0.7; // 700 meters = 0.7 km
 
       rideRequests.forEach((rideRequest) => {
-        if (!rideRequest.pickupLatitude || !rideRequest.pickupLongitude) {
+        if (!rideRequest.originLatitude || !rideRequest.originLongitude) {
           return;
         }
 
         const actualPickupLocation: Location = {
-          latitude: rideRequest.pickupLatitude,
-          longitude: rideRequest.pickupLongitude,
-          address: rideRequest.pickupAddress || undefined,
+          latitude: rideRequest.originLatitude,
+          longitude: rideRequest.originLongitude,
+          address: rideRequest.originAddress || undefined,
         };
 
         // Generate random position within 700m circle for pickup
@@ -914,11 +986,11 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
         let actualDropoffLocation: Location | null = null;
         let displayDropoffLocation: Location | null = null;
         
-        if (rideRequest.dropoffLatitude && rideRequest.dropoffLongitude) {
+        if (rideRequest.destinationLatitude && rideRequest.destinationLongitude) {
           actualDropoffLocation = {
-            latitude: rideRequest.dropoffLatitude,
-            longitude: rideRequest.dropoffLongitude,
-            address: rideRequest.dropoffAddress || undefined,
+            latitude: rideRequest.destinationLatitude,
+            longitude: rideRequest.destinationLongitude,
+            address: rideRequest.destinationAddress || undefined,
           };
           
           // Generate random position within 700m circle for dropoff
@@ -960,8 +1032,8 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
           const routeSourceId = `route-${rideRequest.id}`;
           const routeLayerId = `route-layer-${rideRequest.id}`;
           
-          // Check if current user is the requester
-          const isOwner = userProfileId && rideRequest.requesterId === userProfileId;
+          // Check if current user is the requester (creator)
+          const isOwner = userProfileId && rideRequest.hostId === userProfileId;
 
           const marker = new maplibregl.Marker({ element: el })
             .setLngLat(locationToCoordinates(displayPickupLocation))
@@ -972,8 +1044,8 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
                     <p style="font-weight: 600; color: #3b82f6; margin: 0 0 8px 0;">Ride Request</p>
                     <p style="font-size: 12px; color: #666; margin: 4px 0;"><strong>Pickup:</strong> ${pickupStreetName}</p>
                     ${dropoffStreetName ? `<p style="font-size: 12px; color: #666; margin: 4px 0;"><strong>Dropoff:</strong> ${dropoffStreetName}</p>` : ''}
-                    <p style="font-size: 12px; color: #666; margin: 4px 0;"><strong>Seats:</strong> ${rideRequest.numberOfSeats}</p>
-                    <p style="font-size: 12px; color: #666; margin: 4px 0;"><strong>Max:</strong> $${rideRequest.maximumAmount?.toFixed(2)} CAD</p>
+                    <p style="font-size: 12px; color: #666; margin: 4px 0;"><strong>Seats:</strong> ${rideRequest.totalSeats}</p>
+                    <p style="font-size: 12px; color: #666; margin: 4px 0;"><strong>Max:</strong> $${rideRequest.maximumAmount?.toFixed(2) || '0.00'} CAD</p>
                     <p style="font-size: 10px; color: #999; margin: 8px 0 0 0;">Click marker to see route</p>
                     ${isOwner ? `
                       <button 
@@ -1022,7 +1094,7 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
           });
 
           markersRef.current.push({
-            rideRequest,
+            ride: rideRequest,
             actualPickupLocation,
             displayPickupLocation,
             actualDropoffLocation,
@@ -1812,15 +1884,17 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
           ) : (
             <ul className="space-y-3 max-w-3xl mx-auto" role="list">
               {rideRequests.map((request) => {
-                const isOwner = userProfileId && request.requesterId === userProfileId;
+                const isOwner = userProfileId && request.hostId === userProfileId;
                 return (
                   <li key={request.id} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
                     <div className="p-4">
                       <div className="flex items-start justify-between gap-3 mb-2">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 flex-wrap">
+                            <RideTypeBadge rideType={request.rideType} size="sm" />
+                            <RideStatusBadge status={request.status} size="sm" />
                             <p className="font-medium text-gray-900 truncate">
-                              {extractStreetName(request.pickupAddress)} → {extractStreetName(request.dropoffAddress)}
+                              {extractStreetName(request.originAddress)} → {extractStreetName(request.destinationAddress)}
                             </p>
                             {isOwner && (
                               <span className="px-2 py-0.5 rounded text-xs font-medium bg-primary-100 text-primary-700 shrink-0">
@@ -1831,16 +1905,16 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
                           <div className="flex flex-wrap items-center gap-3 mt-1 text-sm text-gray-600">
                             <span className="flex items-center gap-1">
                               <Users className="w-4 h-4" />
-                              {request.numberOfSeats} seat{request.numberOfSeats !== 1 ? 's' : ''}
+                              {request.totalSeats} seat{request.totalSeats !== 1 ? 's' : ''}
                             </span>
                             <span className="flex items-center gap-1">
                               <DollarSign className="w-4 h-4" />
-                              Max ${request.maximumAmount?.toFixed(2)} CAD
+                              Max ${request.maximumAmount?.toFixed(2) || '0.00'} CAD
                             </span>
-                            {request.preferredTime && (
+                            {request.departureTime && (
                               <span className="flex items-center gap-1">
                                 <Clock className="w-4 h-4" />
-                                {new Date(request.preferredTime).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                                {formatRelativeDate(request.departureTime)}
                               </span>
                             )}
                           </div>

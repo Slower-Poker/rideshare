@@ -93,16 +93,6 @@ export function BookRideConfirm({ setCurrentView, user }: SharedProps) {
         return;
       }
       
-      // Check if RideRequest model is available
-      if (!client.models.RideRequest) {
-        if (import.meta.env.DEV) {
-          console.error('RideRequest model not available. Please restart the Amplify sandbox.');
-        }
-        toast.error('Ride request feature is not available yet. Please restart the Amplify sandbox and try again.');
-        setSaving(false);
-        return;
-      }
-
       // Validate and convert requestedTime to ISO format
       if (!bookingData.requestedTime) {
         toast.error('Requested time is missing');
@@ -119,23 +109,41 @@ export function BookRideConfirm({ setCurrentView, user }: SharedProps) {
 
       const requestedTimeISO = requestedDateTime.toISOString();
       
-      // Create ride request (TS2590: Amplify generated union too complex; result typed explicitly)
-      // @ts-expect-error TS2590 - Amplify Schema return type is too complex to represent
-      const result = await client.models.RideRequest.create({
-        requesterId: profile.id,
-        pickupLatitude: bookingData.pickup.latitude,
-        pickupLongitude: bookingData.pickup.longitude,
-        pickupAddress: bookingData.pickup.address || undefined,
-        dropoffLatitude: bookingData.dropoff.latitude,
-        dropoffLongitude: bookingData.dropoff.longitude,
-        dropoffAddress: bookingData.dropoff.address || undefined,
-        requestedTime: requestedTimeISO,
-        numberOfSeats: bookingData.numberOfSeats!,
+      // Calculate expiry (departure + 60 minutes grace)
+      const graceMinutes = 60;
+      const expiresAt = new Date(requestedDateTime.getTime() + graceMinutes * 60 * 1000);
+      
+      // Extract region from address for filtering
+      const extractRegion = (address: string | undefined): string | undefined => {
+        if (!address) return undefined;
+        const part = address.split(',')[0]?.trim();
+        return part || undefined;
+      };
+      
+      // Create ride with rideType: 'request'
+      const result = await client.models.Ride.create({
+        hostId: profile.id,
+        rideType: 'request',
+        status: 'open',
+        originLatitude: bookingData.pickup.latitude,
+        originLongitude: bookingData.pickup.longitude,
+        originAddress: bookingData.pickup.address || undefined,
+        originRegion: extractRegion(bookingData.pickup.address),
+        destinationLatitude: bookingData.dropoff.latitude,
+        destinationLongitude: bookingData.dropoff.longitude,
+        destinationAddress: bookingData.dropoff.address || undefined,
+        destinationRegion: extractRegion(bookingData.dropoff.address),
+        departureTime: requestedTimeISO,
+        expiresAt: expiresAt.toISOString(),
+        graceMinutes: graceMinutes,
+        totalSeats: bookingData.numberOfSeats!,
+        seatsBooked: 0,
+        pricePerSeat: 0, // Requests don't have a set price
         maximumAmount: bookingData.maximumAmount!,
         notes: bookingData.notes || undefined,
-        status: 'pending',
+        isReturnTrip: false,
         createdAt: new Date().toISOString(),
-      }) as { data?: Schema['RideRequest']['type']; errors?: unknown[] };
+      }) as { data?: Schema['Ride']['type']; errors?: unknown[] };
       const { data: rideRequest, errors } = result;
 
       if (errors) {

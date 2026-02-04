@@ -4,6 +4,10 @@ import { novaAgentProxy } from '../functions/novaAgentProxy/resource';
 /*
  * RideShare.Click Data Schema
  * Defines models for cooperative ride sharing platform
+ * 
+ * Core Entity: Ride (unified model replacing RideOffer + RideRequest)
+ * - rideType: 'offer' (host offering seats) or 'request' (rider seeking ride)
+ * - status: open → scheduled → in_progress → completed/cancelled/expired
  */
 const schema = a.schema({
   // User Profile Model
@@ -29,10 +33,12 @@ const schema = a.schema({
       coopMemberNumber: a.string(),
       homeRegion: a.string(),
       notifyOnMatch: a.boolean().default(true),
+      // Reputation tracking for cancellation rate
+      cancellationCount: a.integer().default(0),
+      totalRidesCreated: a.integer().default(0),
       // Relationships
-      hostedRides: a.hasMany('RideOffer', 'hostId'),
+      rides: a.hasMany('Ride', 'hostId'),
       joinedRides: a.hasMany('RideParticipant', 'riderId'),
-      rideRequests: a.hasMany('RideRequest', 'requesterId'),
       connectionsFrom: a.hasMany('Connection', 'fromUserId'),
       connectionsTo: a.hasMany('Connection', 'toUserId'),
       createdHostPools: a.hasMany('HostPool', 'creatorId'),
@@ -45,6 +51,7 @@ const schema = a.schema({
       riderPoolReviews: a.hasMany('RiderPoolReview', 'reviewerId'),
       recurringRideTemplates: a.hasMany('RecurringRideTemplate', 'hostId'),
       rideAlerts: a.hasMany('RideAlert', 'userProfileId'),
+      notifications: a.hasMany('Notification', 'userId'),
     })
     .authorization((allow) => [
       // Authenticated users can read all profiles and create their own
@@ -53,35 +60,68 @@ const schema = a.schema({
       // by checking userId matches authenticated user's ID
     ]),
 
-  // Ride Offer Model
-  RideOffer: a
+  // Ride Model - Central entity for all rides (replaces RideOffer + RideRequest)
+  Ride: a
     .model({
-      hostId: a.id().required(),
+      // Core identification
+      hostId: a.id().required(), // Creator (whether offering or requesting)
+      name: a.string(), // Optional user-defined name
+      rideType: a.enum(['offer', 'request']), // 'offer' = host offering seats, 'request' = rider seeking ride
+      status: a.enum(['open', 'scheduled', 'in_progress', 'completed', 'cancelled', 'expired']),
+      
+      // Origin location
       originLatitude: a.float().required(),
       originLongitude: a.float().required(),
       originAddress: a.string(),
       originRegion: a.string(),
+      
+      // Destination location
       destinationLatitude: a.float().required(),
       destinationLongitude: a.float().required(),
       destinationAddress: a.string(),
       destinationRegion: a.string(),
+      
+      // Timing
       departureTime: a.datetime().required(),
-      departureDate: a.string(),
-      availableSeats: a.integer().required(),
+      actualDepartureTime: a.datetime(), // When host actually starts
+      actualArrivalTime: a.datetime(), // When host completes
+      
+      // Expiry (simple: departure + graceMinutes)
+      expiresAt: a.datetime().required(),
+      graceMinutes: a.integer().default(60),
+      
+      // Capacity & Pricing
+      totalSeats: a.integer().required(),
       seatsBooked: a.integer().default(0),
-      status: a.enum(['available', 'matched', 'active', 'completed', 'cancelled']),
+      pricePerSeat: a.float().required(),
+      maximumAmount: a.float(), // For requests - max rider will pay
+      
+      // Flexibility zones
+      pickupRadius: a.float(), // km
+      dropoffRadius: a.float(), // km
+      
+      // Metadata
       vehicleInfo: a.string(),
       notes: a.string(),
-      pickupRadius: a.float(),
-      dropoffRadius: a.float(),
-      price: a.float().required(),
-      joinCode: a.string(),
+      joinCode: a.string(), // 6-char sharing code
+      
+      // Round-trip linking
+      linkedRideId: a.id(), // Paired return trip
+      isReturnTrip: a.boolean().default(false),
+      
+      // Recurring source
+      recurringTemplateId: a.id(),
+      
+      createdAt: a.datetime().required(),
+      updatedAt: a.datetime(),
+      
       // Relationships
       host: a.belongsTo('UserProfile', 'hostId'),
-      participants: a.hasMany('RideParticipant', 'rideOfferId'),
-      ratings: a.hasMany('RideRating', 'rideOfferId'),
-      matchedRideRequests: a.hasMany('RideRequest', 'matchedRideOfferId'),
-      matches: a.hasMany('RideMatch', 'rideOfferId'),
+      participants: a.hasMany('RideParticipant', 'rideId'),
+      ratings: a.hasMany('RideRating', 'rideId'),
+      notifications: a.hasMany('Notification', 'rideId'),
+      // Note: linkedRideId is a plain field - query linked ride manually (self-referential belongsTo not supported)
+      recurringTemplate: a.belongsTo('RecurringRideTemplate', 'recurringTemplateId'),
     })
     .authorization((allow) => [
       // Allow guests to read rides (filtering by status should be done in application code)
@@ -89,14 +129,38 @@ const schema = a.schema({
       // Authenticated users can read all rides and create new ones
       allow.authenticated().to(['read', 'create', 'update', 'delete']),
       // Note: Application logic should enforce that only the host can update/delete their own rides
-      // by checking hostId matches authenticated user's ID
-      // Note: Filtering available rides for guests should be done in application queries
+    ]),
+
+  // Notification Model - In-app notifications for ride events
+  Notification: a
+    .model({
+      userId: a.id().required(), // Recipient
+      rideId: a.id(), // Optional - related ride
+      type: a.enum([
+        'ride_booked',
+        'ride_cancelled', 
+        'ride_started',
+        'ride_completed',
+        'participant_joined',
+        'participant_cancelled',
+        'ride_expiring'
+      ]),
+      title: a.string().required(),
+      message: a.string().required(),
+      read: a.boolean().default(false),
+      createdAt: a.datetime().required(),
+      // Relationships
+      user: a.belongsTo('UserProfile', 'userId'),
+      ride: a.belongsTo('Ride', 'rideId'),
+    })
+    .authorization((allow) => [
+      allow.authenticated().to(['read', 'create', 'update', 'delete']),
     ]),
 
   // Ride Participant Model (Join table for riders in a ride)
   RideParticipant: a
     .model({
-      rideOfferId: a.id().required(),
+      rideId: a.id().required(),
       riderId: a.id().required(),
       status: a.enum(['pending', 'approved', 'declined', 'cancelled']),
       pickupLatitude: a.float(),
@@ -105,9 +169,10 @@ const schema = a.schema({
       dropoffLatitude: a.float(),
       dropoffLongitude: a.float(),
       dropoffAddress: a.string(),
+      seatsRequested: a.integer().default(1),
       joinedAt: a.datetime().required(),
       // Relationships
-      rideOffer: a.belongsTo('RideOffer', 'rideOfferId'),
+      ride: a.belongsTo('Ride', 'rideId'),
       rider: a.belongsTo('UserProfile', 'riderId'),
       ratingsReceived: a.hasMany('RideRating', 'rideParticipantId'),
     })
@@ -118,8 +183,8 @@ const schema = a.schema({
   // Ride Rating Model (for feedback after ride completion or know-person)
   RideRating: a
     .model({
-      rideOfferId: a.id(), // optional for know_person ratings
-      rideParticipantId: a.id(), // optional: link to specific participant for verified_ride (one rating per ride per rater/rated)
+      rideId: a.id(), // optional for know_person ratings
+      rideParticipantId: a.id(), // optional: link to specific participant for verified_ride
       raterId: a.id().required(),
       ratedUserId: a.id().required(),
       rating: a.integer().required(), // 1-5 stars
@@ -128,7 +193,7 @@ const schema = a.schema({
       ratingSource: a.enum(['verified_ride', 'know_person']),
       createdAt: a.datetime().required(),
       // Relationships
-      ride: a.belongsTo('RideOffer', 'rideOfferId'),
+      ride: a.belongsTo('Ride', 'rideId'),
       rideParticipant: a.belongsTo('RideParticipant', 'rideParticipantId'),
       rater: a.belongsTo('UserProfile', 'raterId'),
       ratedUser: a.belongsTo('UserProfile', 'ratedUserId'),
@@ -247,60 +312,55 @@ const schema = a.schema({
       allow.authenticated().to(['read', 'create']),
     ]),
 
-  // Ride Request Model (for riders requesting rides)
-  RideRequest: a
-    .model({
-      requesterId: a.id().required(),
-      pickupLatitude: a.float().required(),
-      pickupLongitude: a.float().required(),
-      pickupAddress: a.string(),
-      dropoffLatitude: a.float().required(),
-      dropoffLongitude: a.float().required(),
-      dropoffAddress: a.string(),
-      requestedTime: a.datetime().required(),
-      numberOfSeats: a.integer().required(),
-      maximumAmount: a.float().required(),
-      notes: a.string(),
-      status: a.enum(['pending', 'matched', 'completed', 'cancelled']),
-      matchedRideOfferId: a.id(),
-      createdAt: a.datetime().required(),
-      // Relationships
-      requester: a.belongsTo('UserProfile', 'requesterId'),
-      rideOffer: a.belongsTo('RideOffer', 'matchedRideOfferId'),
-      matches: a.hasMany('RideMatch', 'rideRequestId'),
-    })
-    .authorization((allow) => [
-      // Allow guests to read ride requests
-      allow.guest().to(['read']),
-      // Authenticated users can read all requests and create new ones
-      allow.authenticated().to(['read', 'create', 'update', 'delete']),
-      // Note: Application logic should enforce that only the requester can update/delete their own requests
-    ]),
-
-  // Recurring Ride Template - host offers same route on a schedule (e.g. every Monday 8am)
+  // Recurring Ride Template - Enhanced with advanced patterns, round-trip support
   RecurringRideTemplate: a
     .model({
       hostId: a.id().required(),
+      name: a.string(), // Optional name for the template
+      rideType: a.enum(['offer', 'request']), // Same as Ride
+      
+      // Origin location
       originLatitude: a.float().required(),
       originLongitude: a.float().required(),
       originAddress: a.string(),
       originRegion: a.string(),
+      
+      // Destination location
       destinationLatitude: a.float().required(),
       destinationLongitude: a.float().required(),
       destinationAddress: a.string(),
       destinationRegion: a.string(),
-      dayOfWeek: a.integer().required(), // 0 = Sunday, 1 = Monday, ... 6 = Saturday
+      
+      // Schedule Pattern
+      patternType: a.enum(['weekly', 'biweekly', 'custom']),
+      daysOfWeek: a.string(), // JSON array string e.g. "[1,3,5]" for Mon/Wed/Fri
       departureTime: a.string().required(), // "08:00" or "08:30"
-      availableSeats: a.integer().required(),
-      price: a.float().required(),
+      validFrom: a.string(), // ISO date - pattern start
+      validUntil: a.string(), // ISO date - pattern end (optional)
+      
+      // Exceptions
+      skipDates: a.string(), // JSON array string of ISO dates to skip
+      
+      // Round-trip support
+      isRoundTrip: a.boolean().default(false),
+      returnDepartureTime: a.string(), // HH:MM for return leg
+      
+      // Ride defaults
+      totalSeats: a.integer().required(),
+      pricePerSeat: a.float().required(),
       vehicleInfo: a.string(),
       notes: a.string(),
       pickupRadius: a.float(),
       dropoffRadius: a.float(),
+      graceMinutes: a.integer().default(60),
+      
       status: a.enum(['active', 'paused', 'cancelled']),
       createdAt: a.datetime().required(),
+      updatedAt: a.datetime(),
+      
       // Relationships
       host: a.belongsTo('UserProfile', 'hostId'),
+      generatedRides: a.hasMany('Ride', 'recurringTemplateId'),
     })
     .authorization((allow) => [
       allow.authenticated().to(['read', 'create', 'update', 'delete']),
@@ -318,23 +378,6 @@ const schema = a.schema({
       createdAt: a.datetime().required(),
       // Relationships
       user: a.belongsTo('UserProfile', 'userProfileId'),
-    })
-    .authorization((allow) => [
-      allow.authenticated().to(['read', 'create', 'update', 'delete']),
-    ]),
-
-  // RideMatch - explicit link between a ride request and a ride offer (propose/accept)
-  RideMatch: a
-    .model({
-      rideOfferId: a.id().required(),
-      rideRequestId: a.id().required(),
-      status: a.enum(['proposed', 'accepted', 'declined']),
-      proposedByUserId: a.id().required(),
-      createdAt: a.datetime().required(),
-      updatedAt: a.datetime(),
-      // Relationships
-      rideOffer: a.belongsTo('RideOffer', 'rideOfferId'),
-      rideRequest: a.belongsTo('RideRequest', 'rideRequestId'),
     })
     .authorization((allow) => [
       allow.authenticated().to(['read', 'create', 'update', 'delete']),
