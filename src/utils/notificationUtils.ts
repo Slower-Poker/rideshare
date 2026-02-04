@@ -40,7 +40,7 @@ export function getNotificationTitle(type: NotificationType, ride?: Partial<Ride
     case 'ride_expiring':
       return `Ride expiring soon: ${rideName}`;
     default:
-      return NOTIFICATION_CONFIG[type]?.defaultTitle || 'Notification';
+      return 'Notification';
   }
 }
 

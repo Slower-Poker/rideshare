@@ -5,7 +5,7 @@ import { client } from '../client';
 import type { SharedProps, Location, Ride } from '../types';
 import { loadMapLibre, isMapLibreLoaded, getMapLibreInstance } from '../utils/maplibreLoader';
 import { RideStatusBadge, RideTypeBadge } from './RideStatusBadge';
-import { getDisplayName, formatRelativeDate, formatPrice, getAvailableSeats } from '../utils/rideUtils';
+import { formatRelativeDate } from '../utils/rideUtils';
 import {
   DEFAULT_CENTER,
   DEFAULT_ZOOM,
@@ -1219,7 +1219,8 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
       const allLocations: Location[] = [];
 
       // Track if we need to focus on a highlighted offer
-      let highlightedOfferLocation: { origin: Location; destination: Location | null } | null = null;
+      type HighlightLocation = { origin: Location; destination: Location | null };
+      let highlightedOfferLocation: HighlightLocation | null = null;
 
       rideOffers.forEach((offer) => {
         if (!offer.originLatitude || !offer.originLongitude) {
@@ -1251,7 +1252,7 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
         }
 
         const isOwner = userProfileId && offer.hostId === userProfileId;
-        const seatsLeft = (offer.availableSeats ?? 0) - (offer.seatsBooked ?? 0);
+        const seatsLeft = (offer.totalSeats ?? 0) - (offer.seatsBooked ?? 0);
         const hasJoinCode = Boolean(offer.joinCode?.trim());
         const isHighlighted = highlightedOfferId === offer.id;
 
@@ -1288,7 +1289,7 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
                     <p style="font-size: 12px; color: #666; margin: 4px 0;"><strong>From:</strong> ${offer.originAddress || offer.originRegion || 'Origin'}</p>
                     <p style="font-size: 12px; color: #666; margin: 4px 0;"><strong>To:</strong> ${offer.destinationAddress || offer.destinationRegion || 'Destination'}</p>
                     <p style="font-size: 12px; color: #666; margin: 4px 0;"><strong>When:</strong> ${formatOfferDeparture(offer.departureTime)}</p>
-                    <p style="font-size: 12px; color: #666; margin: 4px 0;"><strong>Price:</strong> $${offer.price} CAD</p>
+                    <p style="font-size: 12px; color: #666; margin: 4px 0;"><strong>Price:</strong> $${offer.pricePerSeat ?? 0} CAD</p>
                     <p style="font-size: 12px; color: #666; margin: 4px 0;"><strong>Seats:</strong> ${seatsLeft} available</p>
                     ${hasJoinCode ? `
                       <a 
@@ -1411,10 +1412,11 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
 
       // If we have a highlighted offer, fit bounds to show just that route
       // Otherwise show all offer markers
-      if (highlightedOfferLocation) {
-        const focusLocations = [highlightedOfferLocation.origin];
-        if (highlightedOfferLocation.destination) {
-          focusLocations.push(highlightedOfferLocation.destination);
+      const highlighted = highlightedOfferLocation as HighlightLocation | null;
+      if (highlighted) {
+        const focusLocations = [highlighted.origin];
+        if (highlighted.destination) {
+          focusLocations.push(highlighted.destination);
         }
         const bounds = calculateBounds(focusLocations);
         if (bounds) {
@@ -1529,31 +1531,26 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
 
   // Resize map when switching to map view (container may have been hidden)
   useEffect(() => {
-    if (viewMode === 'map' && mapRef.current) {
-      // Use multiple resize attempts to ensure the container has proper dimensions
-      const resizeMap = () => {
-        if (mapRef.current && isMountedRef.current) {
-          try {
-            mapRef.current.resize();
-          } catch (e) {
-            // Ignore errors
-          }
+    if (viewMode !== 'map' || !mapRef.current) return;
+    // Use multiple resize attempts to ensure the container has proper dimensions
+    const resizeMap = () => {
+      if (mapRef.current && isMountedRef.current) {
+        try {
+          mapRef.current.resize();
+        } catch (e) {
+          // Ignore errors
         }
-      };
-      
-      // Immediate resize
-      resizeMap();
-      // Resize after a short delay (for CSS transitions)
-      const timer1 = setTimeout(resizeMap, 50);
-      const timer2 = setTimeout(resizeMap, 150);
-      const timer3 = setTimeout(resizeMap, 300);
-      
-      return () => {
-        clearTimeout(timer1);
-        clearTimeout(timer2);
-        clearTimeout(timer3);
-      };
-    }
+      }
+    };
+    resizeMap();
+    const timer1 = setTimeout(resizeMap, 50);
+    const timer2 = setTimeout(resizeMap, 150);
+    const timer3 = setTimeout(resizeMap, 300);
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      clearTimeout(timer3);
+    };
   }, [viewMode]);
 
   return (
@@ -1718,7 +1715,7 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
           ) : (
             <ul className="space-y-2 max-w-3xl mx-auto" role="list">
               {rideOffers.map((offer) => {
-                const seatsLeft = (offer.availableSeats ?? 0) - (offer.seatsBooked ?? 0);
+                const seatsLeft = (offer.totalSeats ?? 0) - (offer.seatsBooked ?? 0);
                 const hasJoinCode = Boolean(offer.joinCode?.trim());
                 const isOwner = userProfileId && offer.hostId === userProfileId;
                 const hasCoordinates = offer.originLatitude && offer.originLongitude && 
@@ -1782,7 +1779,7 @@ export function FindARideMap({ setCurrentView, user }: SharedProps) {
                               </span>
                               <span className="flex items-center gap-0.5 font-medium text-gray-700">
                                 <DollarSign className="w-3.5 h-3.5" />
-                                {offer.price}
+                                {offer.pricePerSeat ?? 0}
                               </span>
                               <span className="flex items-center gap-0.5">
                                 <Users className="w-3.5 h-3.5" />

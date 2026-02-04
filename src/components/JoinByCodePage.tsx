@@ -4,7 +4,7 @@ import { ArrowLeft, MapPin, Clock, DollarSign, Users, Loader2, CheckCircle } fro
 import { getCurrentUser } from 'aws-amplify/auth';
 import { client } from '../client';
 import { toast } from '../utils/toast';
-import type { RideOffer } from '../types';
+import type { Ride } from '../types';
 
 function formatDeparture(iso: string): string {
   try {
@@ -20,7 +20,7 @@ function formatDeparture(iso: string): string {
 
 export function JoinByCodePage() {
   const { code } = useParams<{ code: string }>();
-  const [offer, setOffer] = useState<RideOffer | null>(null);
+  const [offer, setOffer] = useState<Ride | null>(null);
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
   const [joined, setJoined] = useState(false);
@@ -49,10 +49,10 @@ export function JoinByCodePage() {
     let cancelled = false;
     async function fetchOffer() {
       try {
-        const raw: { data?: RideOffer[]; errors?: unknown[] } = await client.models.RideOffer.list({
+        const raw: { data?: Ride[]; errors?: unknown[] } = await client.models.Ride.list({
           filter: { joinCode: { eq: codeUpper } },
           limit: 1,
-        });
+        }) as { data?: Ride[]; errors?: unknown[] };
         const data = raw.data;
         const errors = raw.errors;
         if (cancelled) return;
@@ -63,8 +63,8 @@ export function JoinByCodePage() {
           return;
         }
         const first = data?.[0];
-        if (first && first.status === 'available') {
-          setOffer(first as RideOffer);
+        if (first && (first.status === 'open' || first.status === 'scheduled')) {
+          setOffer(first);
         } else {
           setOffer(null);
         }
@@ -93,9 +93,9 @@ export function JoinByCodePage() {
         setJoining(false);
         return;
       }
-      // @ts-expect-error TS2590 - Amplify create return type is too complex
+      // @ts-expect-error - Amplify create return type too complex
       const createRaw: { data?: unknown; errors?: { message?: string }[] } = await client.models.RideParticipant.create({
-        rideOfferId: offer.id,
+        rideId: offer.id,
         riderId: profile.id,
         status: 'pending',
         joinedAt: new Date().toISOString(),
@@ -172,7 +172,7 @@ export function JoinByCodePage() {
     );
   }
 
-  const seatsLeft = (offer.availableSeats ?? 0) - (offer.seatsBooked ?? 0);
+  const seatsLeft = (offer.totalSeats ?? 0) - (offer.seatsBooked ?? 0);
 
   return (
     <main id="main-content" className="min-h-screen bg-gray-50">
@@ -205,7 +205,7 @@ export function JoinByCodePage() {
             </div>
             <div className="flex items-center gap-3 text-gray-600">
               <DollarSign className="w-5 h-5 text-primary-600" />
-              <span>${offer.price}</span>
+              <span>${offer.pricePerSeat ?? 0}</span>
             </div>
             <div className="flex items-center gap-3 text-gray-600">
               <Users className="w-5 h-5 text-primary-600" />

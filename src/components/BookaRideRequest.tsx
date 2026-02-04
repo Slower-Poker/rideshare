@@ -1,14 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, MapPin, Clock, Users, DollarSign, FileText, Loader2, Trash2 } from 'lucide-react';
 import { client } from '../client';
-import type { Schema } from '../../amplify/data/resource';
+import type { Ride } from '../types';
 import type { SharedProps } from '../types';
 import { toast } from '../utils/toast';
 
-type RideRequest = Schema['RideRequest']['type'];
-
 export function BookaRideRequest({ setCurrentView, user }: SharedProps) {
-  const [rideRequests, setRideRequests] = useState<RideRequest[]>([]);
+  const [rideRequests, setRideRequests] = useState<Ride[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userProfileId, setUserProfileId] = useState<string | null>(null);
@@ -43,18 +41,10 @@ export function BookaRideRequest({ setCurrentView, user }: SharedProps) {
     setError(null);
 
     try {
-      // Check if RideRequest model is available
-      if (!client.models.RideRequest) {
-        const errorMsg = 'RideRequest model not available. Please restart the Amplify sandbox.';
-        setError(errorMsg);
-        toast.error('Ride request feature is not available yet. Please restart the Amplify sandbox.');
-        setLoading(false);
-        return;
-      }
-
-      const { data, errors } = await client.models.RideRequest.list({
-        limit: 100, // Adjust as needed
-      });
+      const { data, errors } = await client.models.Ride.list({
+        filter: { rideType: { eq: 'request' }, status: { eq: 'open' } },
+        limit: 100,
+      }) as { data?: Ride[]; errors?: unknown[] };
 
       if (errors) {
         console.error('Error loading ride requests:', errors);
@@ -62,7 +52,7 @@ export function BookaRideRequest({ setCurrentView, user }: SharedProps) {
         toast.error('Failed to load ride requests');
       } else {
         // Sort by creation date, newest first
-        const sorted = (data || []).sort((a, b) => {
+        const sorted = (data || []).sort((a: Ride, b: Ride) => {
           const dateA = new Date(a.createdAt || 0).getTime();
           const dateB = new Date(b.createdAt || 0).getTime();
           return dateB - dateA;
@@ -89,7 +79,8 @@ export function BookaRideRequest({ setCurrentView, user }: SharedProps) {
 
     setDeletingId(requestId);
     try {
-      const { errors } = await client.models.RideRequest.delete({ id: requestId });
+      // Cancel the ride (update status) rather than delete
+      const { errors } = await client.models.Ride.update({ id: requestId, status: 'cancelled' });
       if (errors?.length) {
         console.error('Error deleting ride request:', errors);
         toast.error('Failed to delete ride request');
@@ -123,14 +114,16 @@ export function BookaRideRequest({ setCurrentView, user }: SharedProps) {
 
   const getStatusBadgeColor = (status: string | null | undefined): string => {
     switch (status) {
-      case 'pending':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'matched':
+      case 'open':
+        return 'bg-green-100 text-green-800 border-green-200';
+      case 'scheduled':
         return 'bg-blue-100 text-blue-800 border-blue-200';
       case 'completed':
         return 'bg-green-100 text-green-800 border-green-200';
       case 'cancelled':
         return 'bg-red-100 text-red-800 border-red-200';
+      case 'expired':
+        return 'bg-gray-100 text-gray-600 border-gray-200';
       default:
         return 'bg-gray-100 text-gray-800 border-gray-200';
     }
@@ -219,7 +212,7 @@ export function BookaRideRequest({ setCurrentView, user }: SharedProps) {
                         >
                           {request.status || 'pending'}
                         </span>
-                        {userProfileId && request.requesterId === userProfileId && (
+                        {userProfileId && request.hostId === userProfileId && (
                           <span className="px-2 py-0.5 rounded text-xs font-medium bg-primary-100 text-primary-700">
                             Your request
                           </span>
@@ -229,7 +222,7 @@ export function BookaRideRequest({ setCurrentView, user }: SharedProps) {
                         Created: {formatDate(request.createdAt)}
                       </p>
                     </div>
-                    {userProfileId && request.requesterId === userProfileId && (
+                    {userProfileId && request.hostId === userProfileId && (
                       <button
                         type="button"
                         onClick={() => request.id && handleDelete(request.id)}
@@ -261,10 +254,10 @@ export function BookaRideRequest({ setCurrentView, user }: SharedProps) {
                             Pickup
                           </p>
                           <p className="text-sm font-semibold text-gray-900 truncate">
-                            {request.pickupAddress || 'Location selected'}
+                            {request.originAddress || 'Location selected'}
                           </p>
                           <p className="text-xs text-gray-500 mt-1">
-                            {request.pickupLatitude?.toFixed(6)}, {request.pickupLongitude?.toFixed(6)}
+                            {request.originLatitude?.toFixed(6)}, {request.originLongitude?.toFixed(6)}
                           </p>
                         </div>
                       </div>
@@ -283,10 +276,10 @@ export function BookaRideRequest({ setCurrentView, user }: SharedProps) {
                             Dropoff
                           </p>
                           <p className="text-sm font-semibold text-gray-900 truncate">
-                            {request.dropoffAddress || 'Location selected'}
+                            {request.destinationAddress || 'Location selected'}
                           </p>
                           <p className="text-xs text-gray-500 mt-1">
-                            {request.dropoffLatitude?.toFixed(6)}, {request.dropoffLongitude?.toFixed(6)}
+                            {request.destinationLatitude?.toFixed(6)}, {request.destinationLongitude?.toFixed(6)}
                           </p>
                         </div>
                       </div>
@@ -301,7 +294,7 @@ export function BookaRideRequest({ setCurrentView, user }: SharedProps) {
                       <div className="flex-1 min-w-0">
                         <p className="text-xs text-gray-500 mb-0.5">Requested Time</p>
                         <p className="text-sm font-semibold text-gray-900 truncate">
-                          {formatDate(request.requestedTime)}
+                          {formatDate(request.departureTime)}
                         </p>
                       </div>
                     </div>
@@ -312,7 +305,7 @@ export function BookaRideRequest({ setCurrentView, user }: SharedProps) {
                       <div className="flex-1 min-w-0">
                         <p className="text-xs text-gray-500 mb-0.5">Seats Needed</p>
                         <p className="text-sm font-semibold text-gray-900">
-                          {request.numberOfSeats} {request.numberOfSeats === 1 ? 'seat' : 'seats'}
+                          {request.totalSeats} {request.totalSeats === 1 ? 'seat' : 'seats'}
                         </p>
                       </div>
                     </div>

@@ -79,7 +79,7 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
   // Round-trip options
   const [isRoundTrip, setIsRoundTrip] = useState(false);
   const [returnTimeOnly, setReturnTimeOnly] = useState('');
-  const [graceMinutes, setGraceMinutes] = useState(60);
+  const [graceMinutes] = useState(60);
   
   // Recurring ride options
   type RecurrenceType = 'none' | 'weekly' | 'hourly';
@@ -1210,8 +1210,9 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
             const rideDate = new Date(startDate);
             // Find the next occurrence of this day of week
             const daysUntilTarget = (dayOfWeek - startDate.getDay() + 7) % 7;
-            rideDate.setDate(startDate.getDate() + daysUntilTarget + (week * 7));
-            rideDate.setHours(hours, minutes, 0, 0);
+            const dateNum = startDate.getDate() + daysUntilTarget + (week * 7);
+            rideDate.setDate(dateNum);
+            rideDate.setHours(hours ?? 0, minutes ?? 0, 0, 0);
             
             // Only add if it's in the future
             if (rideDate > now) {
@@ -1239,7 +1240,8 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
         lastJoinCode = joinCodeStr;
         
         // Calculate expiry time (departure + grace period)
-        const expiresAtDate = new Date(rideDateTime.getTime() + graceMinutes * 60 * 1000);
+        const graceMins = graceMinutes ?? 60;
+        const expiresAtDate = new Date(rideDateTime.getTime() + graceMins * 60 * 1000);
         const expiresAtISO = expiresAtDate.toISOString();
         
         // Create outbound ride
@@ -1258,7 +1260,7 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
           destinationRegion: destinationRegionStr || undefined,
           departureTime: departureDateTimeISO,
           expiresAt: expiresAtISO,
-          graceMinutes: graceMinutes,
+          graceMinutes: graceMins,
           totalSeats: availableSeats,
           seatsBooked: 0,
           pricePerSeat: price,
@@ -1291,14 +1293,14 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
         if (isRoundTrip && returnTimeOnly && outboundRideId) {
           const [returnHours, returnMinutes] = returnTimeOnly.split(':').map(Number);
           const returnDateTime = new Date(rideDateTime);
-          returnDateTime.setHours(returnHours, returnMinutes, 0, 0);
+          returnDateTime.setHours(Number(returnHours) || 0, Number(returnMinutes) || 0, 0, 0);
           
           // If return time is earlier than departure, assume next day
           if (returnDateTime <= rideDateTime) {
             returnDateTime.setDate(returnDateTime.getDate() + 1);
           }
           
-          const returnExpiresAt = new Date(returnDateTime.getTime() + graceMinutes * 60 * 1000);
+          const returnExpiresAt = new Date(returnDateTime.getTime() + graceMins * 60 * 1000);
           const returnJoinCode = generateJoinCode();
           
           const returnResult = await client.models.Ride.create({
@@ -1317,7 +1319,7 @@ export function OfferaRide({ setCurrentView, user }: SharedProps) {
             destinationRegion: originRegionStr || undefined,
             departureTime: returnDateTime.toISOString(),
             expiresAt: returnExpiresAt.toISOString(),
-            graceMinutes: graceMinutes,
+            graceMinutes: graceMins,
             totalSeats: availableSeats,
             seatsBooked: 0,
             pricePerSeat: price,

@@ -40,10 +40,9 @@ export function NotificationBell({ userId, onViewAll }: NotificationBellProps) {
 
     async function loadNotifications() {
       try {
-        const { data, errors } = await client.models.Notification.list({
-          filter: { userId: { eq: userId } },
-          limit: 20,
-        }) as { data?: Notification[]; errors?: unknown[] };
+        // @ts-expect-error - Amplify list return type too complex
+        const listResult = await client.models.Notification.list({ filter: { userId: { eq: userId } }, limit: 20 });
+        const { data, errors } = listResult as { data?: Notification[]; errors?: unknown[] };
 
         if (cancelled) return;
 

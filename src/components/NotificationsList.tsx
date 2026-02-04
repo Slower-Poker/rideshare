@@ -22,11 +22,11 @@ export function NotificationsList({ setCurrentView, user }: SharedProps) {
   // Load user profile ID
   useEffect(() => {
     if (!user) return;
-    
+    const currentUser = user;
     async function loadProfile() {
       try {
         const { data } = await client.models.UserProfile.list({
-          filter: { userId: { eq: user.userId } },
+          filter: { userId: { eq: currentUser.userId } },
           limit: 1,
         }) as { data?: { id: string }[] };
         
@@ -43,16 +43,18 @@ export function NotificationsList({ setCurrentView, user }: SharedProps) {
 
   // Load notifications when we have the profile ID
   useEffect(() => {
-    if (!userProfileId) return;
+    const profileId = userProfileId ?? undefined;
+    if (!profileId) return;
 
     let cancelled = false;
 
     async function loadNotifications() {
       try {
-        const { data, errors } = await client.models.Notification.list({
-          filter: { userId: { eq: userProfileId } },
+        const listResult = await client.models.Notification.list({
+          filter: { userId: { eq: profileId } },
           limit: 100,
-        }) as { data?: Notification[]; errors?: unknown[] };
+        });
+        const { data, errors } = listResult as { data?: Notification[]; errors?: unknown[] };
 
         if (cancelled) return;
 

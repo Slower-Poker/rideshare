@@ -9,11 +9,9 @@ import {
   parseSkipDates,
   stringifySkipDates,
   formatDaysOfWeek,
-  getShortDayName,
   generateJoinCode,
 } from '../utils/rideUtils';
 
-const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const SHORT_DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const WINNIPEG = { lat: 49.8954, lng: -97.1385 };
@@ -74,6 +72,7 @@ export function RecurringRidesView({ setCurrentView, user }: SharedProps) {
           setLoading(false);
           return;
         }
+        // @ts-expect-error - Amplify list return type too complex
         const raw = (await model.list({ limit: 50 })) as { data?: RecurringRideTemplate[]; errors?: unknown[] };
         if (cancelled) return;
         setTemplates(raw.data ?? []);
@@ -114,7 +113,7 @@ export function RecurringRidesView({ setCurrentView, user }: SharedProps) {
         return;
       }
       
-      await model.create({
+      await (model.create as (input: Record<string, unknown>) => Promise<unknown>)({
         hostId: profile.id,
         name: form.name || undefined,
         rideType: 'offer',
@@ -233,7 +232,8 @@ export function RecurringRidesView({ setCurrentView, user }: SharedProps) {
           if (templateSkipDates.includes(dateStr)) continue;
           
           const iso = d.toISOString();
-          const expiresAt = new Date(d.getTime() + (template.graceMinutes || 60) * 60 * 1000);
+          const graceMinsOutbound = Number(template.graceMinutes ?? 60);
+          const expiresAt = new Date(d.getTime() + graceMinsOutbound * 60 * 1000);
           const joinCode = generateJoinCode();
           
           // Create outbound ride
@@ -252,7 +252,7 @@ export function RecurringRidesView({ setCurrentView, user }: SharedProps) {
             destinationRegion: template.destinationRegion ?? undefined,
             departureTime: iso,
             expiresAt: expiresAt.toISOString(),
-            graceMinutes: template.graceMinutes || 60,
+            graceMinutes: graceMinsOutbound,
             totalSeats: template.totalSeats,
             seatsBooked: 0,
             pricePerSeat: template.pricePerSeat,
@@ -271,15 +271,16 @@ export function RecurringRidesView({ setCurrentView, user }: SharedProps) {
             
             // Create return trip if round-trip
             if (template.isRoundTrip && template.returnDepartureTime && result.data?.id) {
-              const [returnHours, returnMinutes] = template.returnDepartureTime.split(':').map(Number);
+              const parts = template.returnDepartureTime.split(':').map(Number);
               const returnDate = new Date(d);
-              returnDate.setHours(returnHours, returnMinutes, 0, 0);
+              returnDate.setHours(parts[0] ?? 0, parts[1] ?? 0, 0, 0);
               
               if (returnDate <= d) {
                 returnDate.setDate(returnDate.getDate() + 1);
               }
               
-              const returnExpiresAt = new Date(returnDate.getTime() + (template.graceMinutes || 60) * 60 * 1000);
+              const graceMins = Number(template.graceMinutes ?? 60);
+              const returnExpiresAt = new Date(returnDate.getTime() + graceMins * 60 * 1000);
               const returnJoinCode = generateJoinCode();
               
               const returnResult = await client.models.Ride.create({
@@ -298,7 +299,7 @@ export function RecurringRidesView({ setCurrentView, user }: SharedProps) {
                 destinationRegion: template.originRegion ?? undefined,
                 departureTime: returnDate.toISOString(),
                 expiresAt: returnExpiresAt.toISOString(),
-                graceMinutes: template.graceMinutes || 60,
+                graceMinutes: graceMins,
                 totalSeats: template.totalSeats,
                 seatsBooked: 0,
                 pricePerSeat: template.pricePerSeat,

@@ -22,7 +22,7 @@ export function getActiveRide(): ActiveRideData | null {
     const data = JSON.parse(stored) as ActiveRideData;
     
     // Validate data has required fields
-    if (!data.rideOfferId || !data.role) {
+    if (!data.rideId || !data.role) {
       if (import.meta.env.DEV) {
         console.warn('Invalid active ride data in localStorage');
       }

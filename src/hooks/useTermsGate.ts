@@ -18,10 +18,8 @@ export function useTermsGate(user: AuthUser | null) {
 
   const getUniqueCoopMemberNumber = useCallback(async () => {
     return findUniqueCoopMemberNumber(async (candidate) => {
-      const { data: profiles, errors } = await client.models.UserProfile.list({
-        filter: { coopMemberNumber: { eq: candidate } },
-        limit: 1,
-      });
+      const listResult = await client.models.UserProfile.list({ filter: { coopMemberNumber: { eq: candidate } }, limit: 1 });
+      const { data: profiles, errors } = listResult as { data?: Schema['UserProfile']['type'][]; errors?: unknown[] };
 
       if (errors) {
         if (import.meta.env.DEV) {
@@ -39,6 +37,7 @@ export function useTermsGate(user: AuthUser | null) {
     if (normalized && normalized.length === 8) {
       if (normalized !== profile.coopMemberNumber) {
         try {
+          // @ts-expect-error - Amplify update return type too complex
           const { data, errors } = await client.models.UserProfile.update({
             id: profile.id,
             coopMemberNumber: normalized,

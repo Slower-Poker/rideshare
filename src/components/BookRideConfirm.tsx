@@ -120,7 +120,8 @@ export function BookRideConfirm({ setCurrentView, user }: SharedProps) {
         return part || undefined;
       };
       
-      // Create ride with rideType: 'request'
+      // Create ride with rideType: 'request' (TS2590: Amplify return type too complex)
+      // @ts-expect-error - Amplify generated union type too complex
       const result = await client.models.Ride.create({
         hostId: profile.id,
         rideType: 'request',
